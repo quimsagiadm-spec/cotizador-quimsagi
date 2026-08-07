@@ -457,21 +457,45 @@ else:
                 df_vista["Subtotal"] = df_vista["Subtotal"].apply(lambda x: f"${x:,.2f}")
                 st.dataframe(df_vista, use_container_width=True, hide_index=True)
                 
-                # --- NUEVA FUNCIÓN: ELIMINAR LÍNEA ESPECÍFICA ---
+                # --- NUEVA FUNCIÓN: MODIFICAR CARRITO (EDITAR Y ELIMINAR) ---
                 st.markdown("#### 🛠️ Modificar Carrito")
-                opciones_borrar = [f"Línea {i+1}: {prod['Producto']} (Cant: {prod['Cant.']})" for i, prod in enumerate(st.session_state.cotizacion_actual)]
+                tab_edit, tab_del = st.tabs(["✏️ Editar Producto", "❌ Eliminar Producto"])
                 
-                col_del1, col_del2 = st.columns([3, 1])
-                with col_del1:
-                    item_a_borrar = st.selectbox("Selecciona un producto para eliminar de la lista:", opciones_borrar)
-                with col_del2:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("❌ Eliminar seleccionado", use_container_width=True):
-                        idx = opciones_borrar.index(item_a_borrar)
-                        st.session_state.cotizacion_actual.pop(idx)
-                        st.success("Producto eliminado del carrito.")
-                        st.rerun()
+                opciones_carrito = [f"Línea {i+1}: {prod['Producto']} (Cant: {prod['Cant.']})" for i, prod in enumerate(st.session_state.cotizacion_actual)]
                 
+                with tab_edit:
+                    col_sel, col_cant, col_precio, col_btn = st.columns([2, 1, 1, 1])
+                    with col_sel:
+                        item_a_editar = st.selectbox("Selecciona para editar:", opciones_carrito, key="sel_edit")
+                    
+                    if item_a_editar:
+                        idx_edit = opciones_carrito.index(item_a_editar)
+                        prod_edit = st.session_state.cotizacion_actual[idx_edit]
+                        
+                        with col_cant:
+                            nueva_cant = st.number_input("Cantidad", min_value=1, value=int(prod_edit['Cant.']), key="cant_edit")
+                        with col_precio:
+                            nuevo_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_edit['Precio Unit.']), format="%.2f", key="precio_edit")
+                        with col_btn:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button("✏️ Actualizar", use_container_width=True):
+                                st.session_state.cotizacion_actual[idx_edit]['Cant.'] = nueva_cant
+                                st.session_state.cotizacion_actual[idx_edit]['Precio Unit.'] = nuevo_precio
+                                st.session_state.cotizacion_actual[idx_edit]['Subtotal'] = nueva_cant * nuevo_precio
+                                st.success("¡Línea actualizada exitosamente!")
+                                st.rerun()
+
+                with tab_del:
+                    col_del1, col_del2 = st.columns([3, 1])
+                    with col_del1:
+                        item_a_borrar = st.selectbox("Selecciona para eliminar:", opciones_carrito, key="sel_del")
+                    with col_del2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("❌ Eliminar seleccionado", use_container_width=True):
+                            idx_del = opciones_carrito.index(item_a_borrar)
+                            st.session_state.cotizacion_actual.pop(idx_del)
+                            st.success("Producto eliminado del carrito.")
+                            st.rerun()
                 # ------------------------------------------------
                 
                 suma_subtotal = df["Subtotal"].sum() if len(st.session_state.cotizacion_actual) > 0 else 0
