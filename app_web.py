@@ -549,17 +549,29 @@ else:
                 if nuevo_op == "Facturado":
                     nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=reg_sel.get("folio_fiscal", ""))
 
-            with col_c2:
+with col_c2:
                 st.markdown("##### 💰 Carril Financiero (CxC)")
-                nuevo_fin = st.selectbox("Estatus Financiero:", ["Pendiente de cobro", "Pagada"], index=["Pendiente de cobro", "Pagada"].index(reg_sel.get("estatus_financiero", "Pendiente de cobro")))
+                opciones_fin = ["Pendiente de cobro", "Pagada"]
+                fin_actual = reg_sel.get("estatus_financiero", "Pendiente de cobro")
+                idx_fin = opciones_fin.index(fin_actual) if fin_actual in opciones_fin else 0
+                nuevo_fin = st.selectbox("Estatus Financiero:", opciones_fin, index=idx_fin)
                 
-                nueva_forma_pago = reg_sel.get("forma_pago", "Transferencia")
-                nueva_fecha_pago = reg_sel.get("fecha_pago", str(date.today()))
+                nueva_forma_pago = "Transferencia"
+                nueva_fecha_pago = str(date.today())
                 
                 if nuevo_fin == "Pagada":
-                    nueva_forma_pago = st.selectbox("Forma de Pago:", ["Transferencia", "Efectivo", "Tarjeta", "Cheque"], index=["Transferencia", "Efectivo", "Tarjeta", "Cheque"].index(reg_sel.get("forma_pago", "Transferencia") if reg_sel.get("forma_pago") in ["Transferencia", "Efectivo", "Tarjeta", "Cheque"] else 0))
-                    nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=datetime.strptime(reg_sel.get("fecha_pago"), "%Y-%m-%d").date() if reg_sel.get("fecha_pago") else date.today()))
-
+                    opciones_pago = ["Transferencia", "Efectivo", "Tarjeta", "Cheque"]
+                    fp_actual = reg_sel.get("forma_pago")
+                    idx_fp = opciones_pago.index(fp_actual) if fp_actual in opciones_pago else 0
+                    nueva_forma_pago = st.selectbox("Forma de Pago:", opciones_pago, index=idx_fp)
+                    
+                    fe_actual = reg_sel.get("fecha_pago")
+                    try:
+                        dt_val = datetime.strptime(str(fe_actual), "%Y-%m-%d").date() if fe_actual else date.today()
+                    except:
+                        dt_val = date.today()
+                    nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=dt_val))
+                    
             if st.button("💾 Guardar Cambios de Estatus", use_container_width=True):
                 datos_actualizados = {
                     "estatus_operativo": nuevo_op,
