@@ -336,7 +336,6 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     
     suma_total_deuda = 0
     for fac in lista_facturas_cliente:
-        # Calcular dias transcurridos
         f_creacion = pd.to_datetime(fac.get("fecha"))
         dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
         if fac.get("estatus_financiero") == "Pagada":
@@ -518,7 +517,10 @@ else:
             for idx, row in df_hist.iterrows():
                 f_creacion = pd.to_datetime(row.get("fecha"))
                 dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
-                if row.get("estatus_financiero") == "Pagada":
+                
+                if row.get("estatus_operativo") == "No Autorizada":
+                    dias_atraso_lista.append("Cancelada")
+                elif row.get("estatus_financiero") == "Pagada":
                     dias_atraso_lista.append("Pagado")
                 else:
                     dias_atraso_lista.append(f"{dias} días")
@@ -540,13 +542,20 @@ else:
             reg_sel = next((r for r in historial if r["id"] == id_sel), {})
 
             col_c1, col_c2 = st.columns(2)
+            
             with col_c1:
                 st.markdown("##### 📌 Carril Operativo")
-                nuevo_op = st.selectbox("Estatus Operativo:", ["Pendiente de autorización", "Autorizado", "Facturado"], index=["Pendiente de autorización", "Autorizado", "Facturado"].index(reg_sel.get("estatus_operativo", "Pendiente de autorización")))
+                opciones_op = ["Pendiente de autorización", "Autorizado", "Facturado", "No Autorizada"]
+                op_actual = reg_sel.get("estatus_operativo")
+                idx_op = opciones_op.index(op_actual) if op_actual in opciones_op else 0
+                nuevo_op = st.selectbox("Estatus Operativo:", opciones_op, index=idx_op)
                 
-                nuevo_folio_fiscal = reg_sel.get("folio_fiscal", "")
+                nuevo_folio_fiscal = reg_sel.get("folio_fiscal")
+                if nuevo_folio_fiscal is None:
+                    nuevo_folio_fiscal = ""
+                    
                 if nuevo_op == "Facturado":
-                    nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=reg_sel.get("folio_fiscal", ""))
+                    nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=nuevo_folio_fiscal)
 
             with col_c2:
                 st.markdown("##### 💰 Carril Financiero (CxC)")
@@ -610,11 +619,15 @@ else:
                 lista_nombres_clientes = list(set([r["cliente"] for r in historial]))
                 if lista_nombres_clientes:
                     cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
-                    facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta]
-                    cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
+                    # FILTRO: No incluir cotizaciones "No Autorizada" en el estado de cuenta
+                    facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada"]
                     
-                    pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
-                    st.download_button("📥 Descargar Estado de Cuenta (PDF)", data=pdf_edo_cta, file_name=f"EstadoDeCuenta_{cli_edo_cta}.pdf", mime="application/pdf", use_container_width=True)
+                    if len(facturas_cliente) > 0:
+                        cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
+                        pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
+                        st.download_button("📥 Descargar Estado de Cuenta (PDF)", data=pdf_edo_cta, file_name=f"EstadoDeCuenta_{cli_edo_cta}.pdf", mime="application/pdf", use_container_width=True)
+                    else:
+                        st.info("Este cliente no tiene facturas pendientes o activas.")
 
     # 3. MÉTRICAS E INTELIGENCIA DE NEGOCIOS
     elif menu == "📊 Métricas":
@@ -629,14 +642,17 @@ else:
                 if col not in df.columns: df[col] = val
                 else: df[col] = df[col].fillna(val)
 
-            # KPIs Financieros y Operativos
+            # FILTRO: Separamos las ventas "No Autorizadas" (rechazadas/pruebas) para no ensuciar las métricas
+            df_validas = df[df['estatus_operativo'] != 'No Autorizada']
+
+            # KPIs Financieros y Operativos (Sólo información válida)
             col1, col2, col3, col4 = st.columns(4)
-            t_historico = df['total'].sum()
-            t_cobrado = df[df['estatus_financiero'] == 'Pagada']['total'].sum()
-            t_por_cobrar = df[df['estatus_financiero'] == 'Pendiente de cobro']['total'].sum()
-            t_autorizado = df[df['estatus_operativo'] == 'Autorizado']['total'].sum()
+            t_historico = df_validas['total'].sum()
+            t_cobrado = df_validas[df_validas['estatus_financiero'] == 'Pagada']['total'].sum()
+            t_por_cobrar = df_validas[df_validas['estatus_financiero'] == 'Pendiente de cobro']['total'].sum()
+            t_autorizado = df_validas[df_validas['estatus_operativo'].isin(['Autorizado', 'Facturado'])]['total'].sum()
             
-            col1.metric("Total Cotizado", f"${t_historico:,.2f}")
+            col1.metric("Volumen Venta Real", f"${t_historico:,.2f}")
             col2.metric("Cobrado en Banco", f"${t_cobrado:,.2f}")
             col3.metric("Por Cobrar (CxC)", f"${t_por_cobrar:,.2f}", delta_color="inverse")
             col4.metric("Operativo Autorizado", f"${t_autorizado:,.2f}")
@@ -646,15 +662,15 @@ else:
             # Gráficas
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                st.subheader("Ventas por Vendedor")
-                st.bar_chart(df.groupby("vendedor")["total"].sum())
+                st.subheader("Ventas por Vendedor (Reales)")
+                st.bar_chart(df_validas.groupby("vendedor")["total"].sum())
             with col_g2:
                 st.subheader("Estado Financiero (Cobranza)")
-                st.bar_chart(df.groupby("estatus_financiero")["total"].sum())
+                st.bar_chart(df_validas.groupby("estatus_financiero")["total"].sum())
                 
             st.markdown("---")
             st.subheader("Top Clientes con mayor deuda (Pendiente de cobro)")
-            df_deuda = df[df['estatus_financiero'] == 'Pendiente de cobro']
+            df_deuda = df_validas[df_validas['estatus_financiero'] == 'Pendiente de cobro']
             if len(df_deuda) > 0:
                 top_deuda = df_deuda.groupby("cliente")["total"].sum().sort_values(ascending=False).head(5).reset_index()
                 top_deuda["total"] = top_deuda["total"].apply(lambda x: f"${x:,.2f}")
