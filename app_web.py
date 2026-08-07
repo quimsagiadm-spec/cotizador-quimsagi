@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import io
 import os
-from datetime import datetime
+from datetime import datetime, date
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from fpdf import FPDF
@@ -50,7 +50,7 @@ def obtener_siguiente_folio():
     except:
         return 1
 
-# --- 2. EXCEL ---
+# --- 2. EXCEL GENERAL ---
 def generar_excel(datos_cotizacion, cliente, subtotal, iva, total):
     wb = Workbook()
     ws = wb.active
@@ -129,7 +129,7 @@ def armar_direccion(c):
     validas = [p for p in partes if p and p.lower() != "none" and p.lower() != "nan"]
     return ", ".join(validas)
 
-# --- 3. CLASE ESPECIAL PDF ---
+# --- 3. CLASE ESPECIAL PDF (Cotización) ---
 class PDFQuimsagi(FPDF):
     def footer(self):
         self.set_y(-25)
@@ -140,12 +140,10 @@ class PDFQuimsagi(FPDF):
         self.cell(0, 5, "Ventas: ventas1quimsagi@gmail.com  |  Tel: 998 459 2513", ln=True, align='C')
         self.cell(0, 5, "Administracion: direccionquimsagi@gmail.com", ln=True, align='C')
 
-# --- 4. GENERADOR DEL PDF PREMIUM ---
 def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio):
     pdf = PDFQuimsagi()
     pdf.add_page()
     
-    # Marca de Agua y Logo
     logo_path = None
     if os.path.exists("logo.png"): logo_path = "logo.png"
     elif os.path.exists("logo.jpg"): logo_path = "logo.jpg"
@@ -169,7 +167,6 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
         pdf.set_text_color(26, 82, 118)
         pdf.cell(50, 10, "Quimsagi", ln=False)
 
-    # Títulos y Folio
     pdf.set_font("Arial", 'B', 18)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 10, f"COTIZACION #{folio}", ln=True, align='R')
@@ -179,7 +176,6 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.cell(0, 5, "PRODUCTOS DE LIMPIEZA A TU MEDIDA", ln=True, align='R')
     pdf.ln(10)
     
-    # Datos del cliente y Vendedor
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font("Arial", 'B', 11)
     pdf.set_text_color(0, 0, 0)
@@ -212,7 +208,6 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.multi_cell(0, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
     pdf.ln(5)
     
-    # Tabla de productos
     pdf.set_fill_color(26, 82, 118)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 9)
@@ -260,7 +255,6 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.cell(col_w["Subtotal"], 8, f"${total:,.2f}", border=1, align='R', fill=True)
     pdf.ln(15)
     
-    # Datos Bancarios
     pdf.set_font("Arial", 'B', 10)
     pdf.set_text_color(26, 82, 118) 
     pdf.cell(0, 6, "DATOS PARA TRANSFERENCIA BANCARIA", ln=True)
@@ -278,7 +272,97 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf_bytes = pdf.output(dest='S')
     return bytes(pdf_bytes) if not isinstance(pdf_bytes, str) else pdf_bytes.encode('latin-1')
 
-# --- PÁGINA ---
+# --- 4. GENERADOR PDF ESTADO DE CUENTA CLIENTE ---
+def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_cliente):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    logo_path = None
+    if os.path.exists("logo.png"): logo_path = "logo.png"
+    elif os.path.exists("logo.jpg"): logo_path = "logo.jpg"
+    elif os.path.exists("QUIMSAGI LOGO FINAL.jpeg"): logo_path = "QUIMSAGI LOGO FINAL.jpeg"
+
+    if logo_path:
+        try: pdf.image(logo_path, 10, 10, 35)
+        except: pass
+
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(26, 82, 118)
+    pdf.cell(0, 10, "ESTADO DE CUENTA", ln=True, align='R')
+    pdf.set_font("Arial", 'I', 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 4, "QUIMSAGI - PRODUCTOS DE LIMPIEZA", ln=True, align='R')
+    pdf.ln(10)
+    
+    # Datos del cliente
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 7, "  Informacion del Cliente", border=0, fill=True, ln=True)
+    pdf.ln(2)
+    
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(20, 5, "Cliente:", border=0)
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(100, 5, limpiar_texto(nombre_cliente), border=0, ln=True)
+    
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(20, 5, "RFC:", border=0)
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(100, 5, limpiar_texto(cliente_info.get("RFC", "N/D")), border=0, ln=True)
+    
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(20, 5, "Direccion:", border=0)
+    pdf.set_font("Arial", '', 9)
+    pdf.multi_cell(0, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
+    pdf.ln(10)
+    
+    # Tabla de facturas/cotizaciones del cliente
+    pdf.set_fill_color(26, 82, 118)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", 'B', 9)
+    
+    pdf.cell(15, 8, "Folio", border=1, align='C', fill=True)
+    pdf.cell(25, 8, "Fecha", border=1, align='C', fill=True)
+    pdf.cell(35, 8, "Folio Fiscal", border=1, align='C', fill=True)
+    pdf.cell(30, 8, "Operativo", border=1, align='C', fill=True)
+    pdf.cell(30, 8, "Financiero", border=1, align='C', fill=True)
+    pdf.cell(20, 8, "Atraso", border=1, align='C', fill=True)
+    pdf.cell(25, 8, "Total", border=1, align='C', fill=True)
+    pdf.ln()
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", '', 8)
+    
+    suma_total_deuda = 0
+    for fac in lista_facturas_cliente:
+        # Calcular dias transcurridos
+        f_creacion = pd.to_datetime(fac.get("fecha"))
+        dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
+        if fac.get("estatus_financiero") == "Pagada":
+            dias_str = "Pagado"
+        else:
+            dias_str = f"{dias} dias"
+            suma_total_deuda += float(fac.get("total", 0))
+            
+        pdf.cell(15, 7, str(fac.get("id")), border=1, align='C')
+        pdf.cell(25, 7, f_creacion.strftime('%d/%m/%Y'), border=1, align='C')
+        pdf.cell(35, 7, limpiar_texto(fac.get("folio_fiscal") or "S/F"), border=1, align='C')
+        pdf.cell(30, 7, limpiar_texto(fac.get("estatus_operativo", "Pendiente")), border=1, align='C')
+        pdf.cell(30, 7, limpiar_texto(fac.get("estatus_financiero", "Pendiente")), border=1, align='C')
+        pdf.cell(20, 7, dias_str, border=1, align='C')
+        pdf.cell(25, 7, f"${float(fac.get('total', 0)):,.2f}", border=1, align='R')
+        pdf.ln()
+        
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(135, 8, "SALDO PENDIENTE TOTAL:", border=0, align='R')
+    pdf.cell(25, 8, f"${suma_total_deuda:,.2f}", border=1, align='R', fill=True)
+
+    pdf_bytes = pdf.output(dest='S')
+    return bytes(pdf_bytes) if not isinstance(pdf_bytes, str) else pdf_bytes.encode('latin-1')
+
+# --- PÁGINA PRINCIPAL ---
 st.set_page_config(page_title="Cotizador Quimsagi", page_icon="📋", layout="wide")
 
 if 'cotizacion_actual' not in st.session_state: st.session_state.cotizacion_actual = []
@@ -297,12 +381,13 @@ if not st.session_state.autenticado:
             st.error("Usuario o contraseña incorrectos")
 else:
     st.sidebar.title("Menú Principal")
-    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial", "⚙️ Panel de Administrador"])
+    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"])
     
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
 
+    # 1. COTIZADOR
     if menu == "📝 Cotizador":
         st.title("📝 Generar Nueva Cotización")
         clientes = obtener_clientes()
@@ -354,7 +439,7 @@ else:
                     subtotal_linea = precio_final_unitario * cantidad
                     
                     st.session_state.cotizacion_actual.append({
-                        "Clave": prod_info.get("CLAVE", ""),
+                        "Clave": prod_info.get("Clave", prod_info.get("CLAVE", "")),
                         "Producto": producto_seleccionado,
                         "Cant.": cantidad,
                         "Unidad": prod_info.get("UNIDAD", "Pza"),
@@ -394,7 +479,9 @@ else:
                             "cliente": cliente_seleccionado, 
                             "vendedor": vendedor_seleccionado,
                             "total": total_final,
-                            "detalles": st.session_state.cotizacion_actual
+                            "detalles": st.session_state.cotizacion_actual,
+                            "estatus_operativo": "Pendiente de autorización",
+                            "estatus_financiero": "Pendiente de cobro"
                         }
                         try:
                             supabase.table("cotizaciones").insert(cotizacion_data).execute()
@@ -402,7 +489,7 @@ else:
                             st.session_state.cotizacion_actual = []
                             st.rerun()
                         except Exception as e: 
-                            st.error(f"Error al guardar. Detalles: {e}")
+                            st.error(f"Error al guardar: {e}")
                 with col_btn2:
                     st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                 with col_btn3:
@@ -412,48 +499,161 @@ else:
                         st.session_state.cotizacion_actual = []
                         st.rerun()
 
-    elif menu == "📂 Historial":
-        st.title("📂 Historial de Cotizaciones")
+    # 2. HISTORIAL Y COBRANZA
+    elif menu == "📂 Historial y Cobranza":
+        st.title("📂 Historial, Operación y Cobranza (CxC)")
         historial = obtener_historial()
         if len(historial) == 0:
             st.info("Aún no hay cotizaciones guardadas.")
         else:
-            df_historial = pd.DataFrame(historial)
-            df_historial["total"] = df_historial["total"].apply(lambda x: f"${float(x):,.2f}")
-            df_historial["fecha"] = pd.to_datetime(df_historial["fecha"]).dt.strftime('%d/%m/%Y %H:%M')
+            df_hist = pd.DataFrame(historial)
             
-            # Verificación de la columna vendedor (por las dudas)
-            if "vendedor" not in df_historial.columns: 
-                df_historial["vendedor"] = "S/D"
-            else:
-                df_historial["vendedor"] = df_historial["vendedor"].fillna("S/D")
-                
-            st.dataframe(df_historial[["id", "cliente", "vendedor", "total", "fecha"]], column_config={"id": "Folio", "cliente": "Cliente", "vendedor": "Atendió", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
+            # Limpieza y defaults por si hay columnas vacías
+            for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-")]:
+                if col not in df_hist.columns: df_hist[col] = val
+                else: df_hist[col] = df_hist[col].fillna(val)
 
+            # Cálculo de días de atraso para la tabla
+            dias_atraso_lista = []
+            for idx, row in df_hist.iterrows():
+                f_creacion = pd.to_datetime(row.get("fecha"))
+                dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
+                if row.get("estatus_financiero") == "Pagada":
+                    dias_atraso_lista.text = "Pagado"
+                    dias_atraso_lista.append("Pagado")
+                else:
+                    dias_atraso_lista.append(f"{dias} días")
+            df_hist["Atraso"] = dias_atraso_lista
+
+            df_vista = df_hist[["id", "cliente", "vendedor", "estatus_operativo", "estatus_financiero", "Atraso", "total", "fecha"]].copy()
+            df_vista["total"] = df_vista["total"].apply(lambda x: f"${float(x):,.2f}")
+            df_vista["fecha"] = pd.to_datetime(df_vista["fecha"]).dt.strftime('%d/%m/%Y %H:%M')
+            
+            st.dataframe(df_vista, column_config={"id": "Folio", "cliente": "Cliente", "vendedor": "Atendió", "estatus_operativo": "Operativo", "estatus_financiero": "Financiero", "Atraso": "Antigüedad", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
+
+            # PANEL DE ACTUALIZACIÓN DE ESTATUS Y COBRANZA
             st.markdown("---")
-            st.subheader("📄 Recuperar PDF de cotización anterior")
+            st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
             
-            opciones_folios = [f"Folio #{r['id']} - {r['cliente']}" for r in historial if r.get("detalles")]
-            
-            if len(opciones_folios) > 0:
-                folio_descarga = st.selectbox("Selecciona la cotización a descargar:", opciones_folios)
-                
-                id_seleccionado = int(folio_descarga.split("#")[1].split(" -")[0])
-                registro = next((r for r in historial if r["id"] == id_seleccionado), None)
-                
-                if registro and registro.get("detalles"):
-                    cliente_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == registro["cliente"]), {"RAZON_SOCIAL": registro["cliente"]})
-                    datos_cot = registro["detalles"]
-                    suma_subtotal = sum([float(item["Subtotal"]) for item in datos_cot])
-                    iva = suma_subtotal * 0.16
-                    vendedor_registro = registro.get("vendedor", "S/D")
-                    
-                    pdf_recuperado = generar_pdf(datos_cot, cliente_completo, suma_subtotal, iva, float(registro["total"]), vendedor_registro, id_seleccionado)
-                    
-                    st.download_button("📥 Descargar PDF Recuperado", data=pdf_recuperado, file_name=f"Cotizacion_Folio{id_seleccionado}_{registro['cliente']}.pdf", mime="application/pdf", use_container_width=True)
-            else:
-                st.info("Solo las cotizaciones nuevas que guardes a partir de hoy aparecerán aquí para descargar su PDF.")
+            opciones_folios = [f"Folio #{r['id']} - {r['cliente']}" for r in historial]
+            folio_sel_str = st.selectbox("Selecciona el folio a modificar:", opciones_folios)
+            id_sel = int(folio_sel_str.split("#")[1].split(" -")[0])
+            reg_sel = next((r for r in historial if r["id"] == id_sel), {})
 
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                st.markdown("##### 📌 Carril Operativo")
+                nuevo_op = st.selectbox("Estatus Operativo:", ["Pendiente de autorización", "Autorizado", "Facturado"], index=["Pendiente de autorización", "Autorizado", "Facturado"].index(reg_sel.get("estatus_operativo", "Pendiente de autorización")))
+                
+                nuevo_folio_fiscal = reg_sel.get("folio_fiscal", "")
+                if nuevo_op == "Facturado":
+                    nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=reg_sel.get("folio_fiscal", ""))
+
+            with col_c2:
+                st.markdown("##### 💰 Carril Financiero (CxC)")
+                nuevo_fin = st.selectbox("Estatus Financiero:", ["Pendiente de cobro", "Pagada"], index=["Pendiente de cobro", "Pagada"].index(reg_sel.get("estatus_financiero", "Pendiente de cobro")))
+                
+                nueva_forma_pago = reg_sel.get("forma_pago", "Transferencia")
+                nueva_fecha_pago = reg_sel.get("fecha_pago", str(date.today()))
+                
+                if nuevo_fin == "Pagada":
+                    nueva_forma_pago = st.selectbox("Forma de Pago:", ["Transferencia", "Efectivo", "Tarjeta", "Cheque"], index=["Transferencia", "Efectivo", "Tarjeta", "Cheque"].index(reg_sel.get("forma_pago", "Transferencia") if reg_sel.get("forma_pago") in ["Transferencia", "Efectivo", "Tarjeta", "Cheque"] else 0))
+                    nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=datetime.strptime(reg_sel.get("fecha_pago"), "%Y-%m-%d").date() if reg_sel.get("fecha_pago") else date.today()))
+
+            if st.button("💾 Guardar Cambios de Estatus", use_container_width=True):
+                datos_actualizados = {
+                    "estatus_operativo": nuevo_op,
+                    "folio_fiscal": nuevo_folio_fiscal if nuevo_op == "Facturado" else None,
+                    "estatus_financiero": nuevo_fin,
+                    "forma_pago": nueva_forma_pago if nuevo_fin == "Pagada" else None,
+                    "fecha_pago": nueva_fecha_pago if nuevo_fin == "Pagada" else None
+                }
+                try:
+                    supabase.table("cotizaciones").update(datos_actualizados).eq("id", id_sel).execute()
+                    st.success("¡Estatus y cobranza actualizados correctamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al actualizar: {e}")
+
+            # RECUPERAR PDF Y ESTADO DE CUENTA
+            st.markdown("---")
+            col_desc1, col_desc2 = st.columns(2)
+            
+            with col_desc1:
+                st.subheader("📄 Recuperar PDF de Cotización")
+                folios_detalles = [f"Folio #{r['id']} - {r['cliente']}" for r in historial if r.get("detalles")]
+                if folios_detalles:
+                    f_dl = st.selectbox("Elige la cotización:", folios_detalles, key="dl_cot")
+                    id_dl = int(f_dl.split("#")[1].split(" -")[0])
+                    reg_dl = next((r for r in historial if r["id"] == id_dl), None)
+                    if reg_dl and reg_dl.get("detalles"):
+                        cli_comp = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == reg_dl["cliente"]), {"RAZON_SOCIAL": reg_dl["cliente"]})
+                        dt_cot = reg_dl["detalles"]
+                        s_sub = sum([float(i["Subtotal"]) for i in dt_cot])
+                        iv = s_sub * 0.16
+                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "S/D"), id_dl)
+                        st.download_button("📥 Descargar PDF de Cotización", data=pdf_rec, file_name=f"Cotizacion_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
+
+            with col_desc2:
+                st.subheader("📑 Estado de Cuenta por Cliente")
+                lista_nombres_clientes = list(set([r["cliente"] for r in historial]))
+                if lista_nombres_clientes:
+                    cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
+                    facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta]
+                    cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
+                    
+                    pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
+                    st.download_button("📥 Descargar Estado de Cuenta (PDF)", data=pdf_edo_cta, file_name=f"EstadoDeCuenta_{cli_edo_cta}.pdf", mime="application/pdf", use_container_width=True)
+
+    # 3. MÉTRICAS E INTELIGENCIA DE NEGOCIOS
+    elif menu == "📊 Métricas":
+        st.title("📊 Panel de Inteligencia y Cartera Vencida")
+        historial = obtener_historial()
+        
+        if len(historial) > 0:
+            df = pd.DataFrame(historial)
+            df['total'] = df['total'].astype(float)
+            
+            for col, val in [("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("vendedor", "S/D")]:
+                if col not in df.columns: df[col] = val
+                else: df[col] = df[col].fillna(val)
+
+            # KPIs Financieros y Operativos
+            col1, col2, col3, col4 = st.columns(4)
+            t_historico = df['total'].sum()
+            t_cobrado = df[df['estatus_financiero'] == 'Pagada']['total'].sum()
+            t_por_cobrar = df[df['estatus_financiero'] == 'Pendiente de cobro']['total'].sum()
+            t_autorizado = df[df['estatus_operativo'] == 'Autorizado']['total'].sum()
+            
+            col1.metric("Total Cotizado", f"${t_historico:,.2f}")
+            col2.metric("Cobrado en Banco", f"${t_cobrado:,.2f}")
+            col3.metric("Por Cobrar (CxC)", f"${t_por_cobrar:,.2f}", delta_color="inverse")
+            col4.metric("Operativo Autorizado", f"${t_autorizado:,.2f}")
+            
+            st.markdown("---")
+            
+            # Gráficas
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.subheader("Ventas por Vendedor")
+                st.bar_chart(df.groupby("vendedor")["total"].sum())
+            with col_g2:
+                st.subheader("Estado Financiero (Cobranza)")
+                st.bar_chart(df.groupby("estatus_financiero")["total"].sum())
+                
+            st.markdown("---")
+            st.subheader("Top Clientes con mayor deuda (Pendiente de cobro)")
+            df_deuda = df[df['estatus_financiero'] == 'Pendiente de cobro']
+            if len(df_deuda) > 0:
+                top_deuda = df_deuda.groupby("cliente")["total"].sum().sort_values(ascending=False).head(5).reset_index()
+                top_deuda["total"] = top_deuda["total"].apply(lambda x: f"${x:,.2f}")
+                st.dataframe(top_deuda, column_config={"cliente": "Cliente", "total": "Deuda Pendiente"}, use_container_width=True, hide_index=True)
+            else:
+                st.success("¡Excelente! No hay saldos pendientes de cobro en este momento.")
+        else:
+            st.info("Aún no hay suficientes datos para mostrar métricas.")
+
+    # 4. ADMINISTRACIÓN
     elif menu == "⚙️ Panel de Administrador":
         st.title("⚙️ Panel de Administración")
         tab1, tab2 = st.tabs(["📦 Nuevo Producto", "🏢 Nuevo Cliente"])
