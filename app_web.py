@@ -457,46 +457,65 @@ else:
                 df_vista["Subtotal"] = df_vista["Subtotal"].apply(lambda x: f"${x:,.2f}")
                 st.dataframe(df_vista, use_container_width=True, hide_index=True)
                 
-                suma_subtotal = df["Subtotal"].sum()
+                # --- NUEVA FUNCIÓN: ELIMINAR LÍNEA ESPECÍFICA ---
+                st.markdown("#### 🛠️ Modificar Carrito")
+                opciones_borrar = [f"Línea {i+1}: {prod['Producto']} (Cant: {prod['Cant.']})" for i, prod in enumerate(st.session_state.cotizacion_actual)]
+                
+                col_del1, col_del2 = st.columns([3, 1])
+                with col_del1:
+                    item_a_borrar = st.selectbox("Selecciona un producto para eliminar de la lista:", opciones_borrar)
+                with col_del2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("❌ Eliminar seleccionado", use_container_width=True):
+                        idx = opciones_borrar.index(item_a_borrar)
+                        st.session_state.cotizacion_actual.pop(idx)
+                        st.success("Producto eliminado del carrito.")
+                        st.rerun()
+                
+                # ------------------------------------------------
+                
+                suma_subtotal = df["Subtotal"].sum() if len(st.session_state.cotizacion_actual) > 0 else 0
                 iva = suma_subtotal * 0.16
                 total_final = suma_subtotal + iva
                 
-                col_blank, col_totales = st.columns([3, 1])
-                with col_totales:
-                    st.write(f"**Subtotal:** ${suma_subtotal:,.2f}")
-                    st.write(f"**IVA (16%):** ${iva:,.2f}")
-                    st.write(f"### **Total:** ${total_final:,.2f}")
-                
-                st.markdown("---")
-                col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
-                
-                cliente_completo = next((c for c in clientes if c.get("RAZON_SOCIAL") == cliente_seleccionado), {})
-                
-                with col_btn1:
-                    if st.button("💾 Guardar en Historial", use_container_width=True):
-                        cotizacion_data = {
-                            "cliente": cliente_seleccionado, 
-                            "vendedor": vendedor_seleccionado,
-                            "total": total_final,
-                            "detalles": st.session_state.cotizacion_actual,
-                            "estatus_operativo": "Pendiente de autorización",
-                            "estatus_financiero": "Pendiente de cobro"
-                        }
-                        try:
-                            supabase.table("cotizaciones").insert(cotizacion_data).execute()
-                            st.success("¡Guardada exitosamente!")
+                if len(st.session_state.cotizacion_actual) > 0:
+                    st.markdown("---")
+                    col_blank, col_totales = st.columns([3, 1])
+                    with col_totales:
+                        st.write(f"**Subtotal:** ${suma_subtotal:,.2f}")
+                        st.write(f"**IVA (16%):** ${iva:,.2f}")
+                        st.write(f"### **Total:** ${total_final:,.2f}")
+                    
+                    st.markdown("---")
+                    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
+                    
+                    cliente_completo = next((c for c in clientes if c.get("RAZON_SOCIAL") == cliente_seleccionado), {})
+                    
+                    with col_btn1:
+                        if st.button("💾 Guardar en Historial", use_container_width=True):
+                            cotizacion_data = {
+                                "cliente": cliente_seleccionado, 
+                                "vendedor": vendedor_seleccionado,
+                                "total": total_final,
+                                "detalles": st.session_state.cotizacion_actual,
+                                "estatus_operativo": "Pendiente de autorización",
+                                "estatus_financiero": "Pendiente de cobro"
+                            }
+                            try:
+                                supabase.table("cotizaciones").insert(cotizacion_data).execute()
+                                st.success("¡Guardada exitosamente!")
+                                st.session_state.cotizacion_actual = []
+                                st.rerun()
+                            except Exception as e: 
+                                st.error(f"Error al guardar: {e}")
+                    with col_btn2:
+                        st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    with col_btn3:
+                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+                    with col_btn4:
+                        if st.button("🗑️ Limpiar Todo", use_container_width=True):
                             st.session_state.cotizacion_actual = []
                             st.rerun()
-                        except Exception as e: 
-                            st.error(f"Error al guardar: {e}")
-                with col_btn2:
-                    st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-                with col_btn3:
-                    st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
-                with col_btn4:
-                    if st.button("🗑️ Limpiar Todo", use_container_width=True):
-                        st.session_state.cotizacion_actual = []
-                        st.rerun()
 
     # 2. HISTORIAL Y COBRANZA
     elif menu == "📂 Historial y Cobranza":
@@ -507,12 +526,10 @@ else:
         else:
             df_hist = pd.DataFrame(historial)
             
-            # Limpieza y defaults por si hay columnas vacías
             for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-")]:
                 if col not in df_hist.columns: df_hist[col] = val
                 else: df_hist[col] = df_hist[col].fillna(val)
 
-            # Cálculo de días de atraso para la tabla
             dias_atraso_lista = []
             for idx, row in df_hist.iterrows():
                 f_creacion = pd.to_datetime(row.get("fecha"))
@@ -532,7 +549,6 @@ else:
             
             st.dataframe(df_vista, column_config={"id": "Folio", "cliente": "Cliente", "vendedor": "Atendió", "estatus_operativo": "Operativo", "estatus_financiero": "Financiero", "Atraso": "Antigüedad", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
 
-            # PANEL DE ACTUALIZACIÓN DE ESTATUS Y COBRANZA
             st.markdown("---")
             st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
             
@@ -595,7 +611,6 @@ else:
                 except Exception as e:
                     st.error(f"Error al actualizar: {e}")
 
-            # RECUPERAR PDF Y ESTADO DE CUENTA
             st.markdown("---")
             col_desc1, col_desc2 = st.columns(2)
             
@@ -619,7 +634,6 @@ else:
                 lista_nombres_clientes = list(set([r["cliente"] for r in historial]))
                 if lista_nombres_clientes:
                     cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
-                    # FILTRO: No incluir cotizaciones "No Autorizada" en el estado de cuenta
                     facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada"]
                     
                     if len(facturas_cliente) > 0:
@@ -642,10 +656,8 @@ else:
                 if col not in df.columns: df[col] = val
                 else: df[col] = df[col].fillna(val)
 
-            # FILTRO: Separamos las ventas "No Autorizadas" (rechazadas/pruebas) para no ensuciar las métricas
             df_validas = df[df['estatus_operativo'] != 'No Autorizada']
 
-            # KPIs Financieros y Operativos (Sólo información válida)
             col1, col2, col3, col4 = st.columns(4)
             t_historico = df_validas['total'].sum()
             t_cobrado = df_validas[df_validas['estatus_financiero'] == 'Pagada']['total'].sum()
@@ -659,7 +671,6 @@ else:
             
             st.markdown("---")
             
-            # Gráficas
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 st.subheader("Ventas por Vendedor (Reales)")
