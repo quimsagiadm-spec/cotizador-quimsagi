@@ -363,7 +363,7 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     return bytes(pdf_bytes) if not isinstance(pdf_bytes, str) else pdf_bytes.encode('latin-1')
 
 # --- PÁGINA PRINCIPAL ---
-st.set_page_config(page_title="Cotizador Quimsagi", page_icon="📋", layout="wide")
+st.set_page_config(page_title="ERP QUIMSAGI", page_icon="📋", layout="wide")
 
 if 'cotizacion_actual' not in st.session_state: st.session_state.cotizacion_actual = []
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
@@ -389,7 +389,7 @@ else:
 
     # 1. COTIZADOR
     if menu == "📝 Cotizador":
-        st.title("📝 Generar Nueva Cotización")
+        st.title("📝 Módulo de Ventas - ERP QUIMSAGI")
         clientes = obtener_clientes()
         productos = obtener_productos()
         
@@ -501,7 +501,7 @@ else:
 
     # 2. HISTORIAL Y COBRANZA
     elif menu == "📂 Historial y Cobranza":
-        st.title("📂 Historial, Operación y Cobranza (CxC)")
+        st.title("📂 Historial y Cuentas por Cobrar (CxC)")
         historial = obtener_historial()
         if len(historial) == 0:
             st.info("Aún no hay cotizaciones guardadas.")
@@ -519,7 +519,6 @@ else:
                 f_creacion = pd.to_datetime(row.get("fecha"))
                 dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
                 if row.get("estatus_financiero") == "Pagada":
-                    dias_atraso_lista.text = "Pagado"
                     dias_atraso_lista.append("Pagado")
                 else:
                     dias_atraso_lista.append(f"{dias} días")
@@ -549,7 +548,7 @@ else:
                 if nuevo_op == "Facturado":
                     nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=reg_sel.get("folio_fiscal", ""))
 
-with col_c2:
+            with col_c2:
                 st.markdown("##### 💰 Carril Financiero (CxC)")
                 opciones_fin = ["Pendiente de cobro", "Pagada"]
                 fin_actual = reg_sel.get("estatus_financiero", "Pendiente de cobro")
@@ -571,6 +570,7 @@ with col_c2:
                     except:
                         dt_val = date.today()
                     nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=dt_val))
+
             if st.button("💾 Guardar Cambios de Estatus", use_container_width=True):
                 datos_actualizados = {
                     "estatus_operativo": nuevo_op,
@@ -618,7 +618,7 @@ with col_c2:
 
     # 3. MÉTRICAS E INTELIGENCIA DE NEGOCIOS
     elif menu == "📊 Métricas":
-        st.title("📊 Panel de Inteligencia y Cartera Vencida")
+        st.title("📊 Panel de Inteligencia Financiera")
         historial = obtener_historial()
         
         if len(historial) > 0:
@@ -666,7 +666,7 @@ with col_c2:
 
     # 4. ADMINISTRACIÓN
     elif menu == "⚙️ Panel de Administrador":
-        st.title("⚙️ Panel de Administración")
+        st.title("⚙️ Configuración del ERP")
         tab1, tab2 = st.tabs(["📦 Nuevo Producto", "🏢 Nuevo Cliente"])
         with tab1:
             col1, col2 = st.columns(2)
