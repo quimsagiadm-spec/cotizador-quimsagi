@@ -571,7 +571,6 @@ with col_c2:
                     except:
                         dt_val = date.today()
                     nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=dt_val))
-                    
             if st.button("💾 Guardar Cambios de Estatus", use_container_width=True):
                 datos_actualizados = {
                     "estatus_operativo": nuevo_op,
