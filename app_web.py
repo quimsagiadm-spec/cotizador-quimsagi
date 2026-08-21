@@ -384,7 +384,6 @@ if 'cliente_en_edicion' not in st.session_state: st.session_state.cliente_en_edi
 if 'vendedor_en_edicion' not in st.session_state: st.session_state.vendedor_en_edicion = None
 if 'obs_en_edicion' not in st.session_state: st.session_state.obs_en_edicion = ""
 if 'fp_cot_en_edicion' not in st.session_state: st.session_state.fp_cot_en_edicion = "Transferencia"
-if 'menu_actual' not in st.session_state: st.session_state.menu_actual = "📝 Cotizador"
 
 if not st.session_state.autenticado:
     st.title("🔒 Acceso al Sistema")
@@ -400,8 +399,8 @@ if not st.session_state.autenticado:
 else:
     st.sidebar.title("Menú Principal")
     
-    # Menú controlado por memoria para permitir la teletransportación
-    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"], key="menu_actual")
+    # Menú limpio sin la llave que causaba el conflicto
+    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"])
     
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.autenticado = False
@@ -683,10 +682,7 @@ else:
                 st.session_state.obs_en_edicion = reg_sel.get("observaciones", "")
                 st.session_state.fp_cot_en_edicion = reg_sel.get("forma_pago_cotizacion", "Transferencia")
                 st.session_state.cotizacion_actual = reg_sel.get("detalles", []) if reg_sel.get("detalles") else []
-                
-                # --- MAGIA DE TELETRANSPORTACIÓN ---
-                st.session_state.menu_actual = "📝 Cotizador"
-                st.rerun()
+                st.success("✅ ¡Folio cargado con éxito! Haz clic en '📝 Cotizador' en el menú de la izquierda para ver y editar los productos.")
             
             st.markdown("---")
             col_desc1, col_desc2 = st.columns(2)
