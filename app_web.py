@@ -207,7 +207,6 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.set_font("Arial", '', 9)
     pdf.multi_cell(110, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
     
-    # NUEVO: Imprimir observaciones y forma de pago en PDF
     if forma_pago:
         pdf.set_font("Arial", 'B', 9)
         pdf.cell(20, 5, "Pago:", border=0)
@@ -385,6 +384,7 @@ if 'cliente_en_edicion' not in st.session_state: st.session_state.cliente_en_edi
 if 'vendedor_en_edicion' not in st.session_state: st.session_state.vendedor_en_edicion = None
 if 'obs_en_edicion' not in st.session_state: st.session_state.obs_en_edicion = ""
 if 'fp_cot_en_edicion' not in st.session_state: st.session_state.fp_cot_en_edicion = "Transferencia"
+if 'menu_actual' not in st.session_state: st.session_state.menu_actual = "📝 Cotizador"
 
 if not st.session_state.autenticado:
     st.title("🔒 Acceso al Sistema")
@@ -399,7 +399,9 @@ if not st.session_state.autenticado:
             st.error("Usuario o contraseña incorrectos")
 else:
     st.sidebar.title("Menú Principal")
-    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"])
+    
+    # Menú controlado por memoria para permitir la teletransportación
+    menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"], key="menu_actual")
     
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.autenticado = False
@@ -432,7 +434,6 @@ else:
             st.subheader("1. Datos Generales")
             col_vendedor, col_folio = st.columns([3, 1])
             
-            # --- NUEVA LISTA OFICIAL DE VENDEDORES ---
             lista_vendedores = ["Gilber Carbajal", "Omar Santiago", "Lizedy Facundo", "Grisy Ojeda"]
             idx_vendedor = lista_vendedores.index(st.session_state.vendedor_en_edicion) if st.session_state.vendedor_en_edicion in lista_vendedores else 0
             
@@ -448,12 +449,10 @@ else:
             with col_c1:
                 cliente_seleccionado = st.selectbox("Selecciona un cliente:", lista_razones_sociales, index=idx_cliente)
             with col_c2:
-                # --- NUEVO: FORMA DE PAGO EN COTIZADOR ---
                 opciones_fp = ["Transferencia", "Efectivo", "Tarjeta", "Cheque", "Crédito"]
                 idx_fp = opciones_fp.index(st.session_state.fp_cot_en_edicion) if st.session_state.fp_cot_en_edicion in opciones_fp else 0
                 fp_cotizacion_seleccionada = st.selectbox("Forma de pago esperada:", opciones_fp, index=idx_fp)
 
-            # --- NUEVO: RECUADRO DE OBSERVACIONES Y SUCURSAL ---
             observaciones_texto = st.text_area("Observaciones o Sucursal de entrega (Se imprimirá en el PDF):", value=st.session_state.obs_en_edicion, height=68)
             
             st.subheader("2. Agregar Productos y Precios")
@@ -623,7 +622,10 @@ else:
             st.markdown("---")
             st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
             opciones_folios = [f"Folio #{r['id']} - {r['cliente']}" for r in historial]
-            folio_sel_str = st.selectbox("Selecciona el folio a modificar:", opciones_folios)
+            
+            # --- CANDADO DE MEMORIA PARA EL SELECTBOX ---
+            folio_sel_str = st.selectbox("Selecciona el folio a modificar:", opciones_folios, key="memoria_folio_admin")
+            
             id_sel = int(folio_sel_str.split("#")[1].split(" -")[0])
             reg_sel = next((r for r in historial if r["id"] == id_sel), {})
 
@@ -681,7 +683,10 @@ else:
                 st.session_state.obs_en_edicion = reg_sel.get("observaciones", "")
                 st.session_state.fp_cot_en_edicion = reg_sel.get("forma_pago_cotizacion", "Transferencia")
                 st.session_state.cotizacion_actual = reg_sel.get("detalles", []) if reg_sel.get("detalles") else []
-                st.success("¡Folio cargado! Ve al menú '📝 Cotizador' para hacer los cambios.")
+                
+                # --- MAGIA DE TELETRANSPORTACIÓN ---
+                st.session_state.menu_actual = "📝 Cotizador"
+                st.rerun()
             
             st.markdown("---")
             col_desc1, col_desc2 = st.columns(2)
@@ -690,7 +695,7 @@ else:
                 st.subheader("📄 Recuperar PDF de Cotización")
                 folios_detalles = [f"Folio #{r['id']} - {r['cliente']}" for r in historial if r.get("detalles")]
                 if folios_detalles:
-                    f_dl = st.selectbox("Elige la cotización:", folios_detalles, key="dl_cot")
+                    f_dl = st.selectbox("Elige la cotización:", folios_detalles)
                     id_dl = int(f_dl.split("#")[1].split(" -")[0])
                     reg_dl = next((r for r in historial if r["id"] == id_dl), None)
                     if reg_dl and reg_dl.get("detalles"):
@@ -762,7 +767,7 @@ else:
         else: st.info("Aún no hay suficientes datos para mostrar métricas.")
 
     # ==========================================
-    # 4. ADMINISTRACIÓN (NUEVA EDICIÓN)
+    # 4. ADMINISTRACIÓN
     # ==========================================
     elif menu == "⚙️ Panel de Administrador":
         st.title("⚙️ Configuración del ERP")
