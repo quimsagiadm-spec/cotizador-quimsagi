@@ -140,7 +140,7 @@ class PDFQuimsagi(FPDF):
         self.cell(0, 5, "Ventas: ventas1quimsagi@gmail.com  |  Tel: 998 459 2513", ln=True, align='C')
         self.cell(0, 5, "Administracion: direccionquimsagi@gmail.com", ln=True, align='C')
 
-def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio):
+def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio, observaciones="", forma_pago=""):
     pdf = PDFQuimsagi()
     pdf.add_page()
     
@@ -159,9 +159,9 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
             img.save(wm_io, format='PNG')
             wm_io.seek(0)
             pdf.image(wm_io, x=35, y=90, w=140)
-        except Exception as e:
-            pass 
-        pdf.image(logo_path, 10, 10, 42)
+        except: pass 
+        try: pdf.image(logo_path, 10, 10, 42)
+        except: pass
     else:
         pdf.set_font("Arial", 'B', 22)
         pdf.set_text_color(26, 82, 118)
@@ -205,7 +205,22 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(20, 5, "Direccion:", border=0)
     pdf.set_font("Arial", '', 9)
-    pdf.multi_cell(0, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
+    pdf.multi_cell(110, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
+    
+    # NUEVO: Imprimir observaciones y forma de pago en PDF
+    if forma_pago:
+        pdf.set_font("Arial", 'B', 9)
+        pdf.cell(20, 5, "Pago:", border=0)
+        pdf.set_font("Arial", '', 9)
+        pdf.cell(0, 5, limpiar_texto(forma_pago), border=0, ln=True)
+        
+    if observaciones:
+        pdf.ln(2)
+        pdf.set_font("Arial", 'B', 9)
+        pdf.cell(25, 5, "Notas/Envio:", border=0)
+        pdf.set_font("Arial", '', 9)
+        pdf.multi_cell(0, 5, limpiar_texto(observaciones), border=0)
+        
     pdf.ln(5)
     
     pdf.set_fill_color(26, 82, 118)
@@ -294,7 +309,6 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     pdf.cell(0, 4, "QUIMSAGI - PRODUCTOS DE LIMPIEZA", ln=True, align='R')
     pdf.ln(10)
     
-    # Datos del cliente
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font("Arial", 'B', 10)
     pdf.set_text_color(0, 0, 0)
@@ -317,7 +331,6 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     pdf.multi_cell(0, 5, limpiar_texto(armar_direccion(cliente_info)), border=0)
     pdf.ln(10)
     
-    # Tabla de facturas/cotizaciones del cliente
     pdf.set_fill_color(26, 82, 118)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 9)
@@ -364,8 +377,14 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
 # --- PÁGINA PRINCIPAL ---
 st.set_page_config(page_title="ERP QUIMSAGI", page_icon="📋", layout="wide")
 
+# --- VARIABLES DE SESIÓN ---
 if 'cotizacion_actual' not in st.session_state: st.session_state.cotizacion_actual = []
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
+if 'folio_en_edicion' not in st.session_state: st.session_state.folio_en_edicion = None
+if 'cliente_en_edicion' not in st.session_state: st.session_state.cliente_en_edicion = None
+if 'vendedor_en_edicion' not in st.session_state: st.session_state.vendedor_en_edicion = None
+if 'obs_en_edicion' not in st.session_state: st.session_state.obs_en_edicion = ""
+if 'fp_cot_en_edicion' not in st.session_state: st.session_state.fp_cot_en_edicion = "Transferencia"
 
 if not st.session_state.autenticado:
     st.title("🔒 Acceso al Sistema")
@@ -386,7 +405,9 @@ else:
         st.session_state.autenticado = False
         st.rerun()
 
-    # 1. COTIZADOR
+    # ==========================================
+    # 1. MÓDULO COTIZADOR
+    # ==========================================
     if menu == "📝 Cotizador":
         st.title("📝 Módulo de Ventas - ERP QUIMSAGI")
         clientes = obtener_clientes()
@@ -395,18 +416,45 @@ else:
         if len(clientes) == 0 or len(productos) == 0:
             st.warning("⚠️ Faltan clientes o productos en la base de datos.")
         else:
-            folio_actual = obtener_siguiente_folio()
+            if st.session_state.folio_en_edicion:
+                st.warning(f"⚠️ ESTÁS EDITANDO EL FOLIO #{st.session_state.folio_en_edicion} DESDE EL HISTORIAL")
+                if st.button("❌ Cancelar edición y hacer cotización nueva", use_container_width=True):
+                    st.session_state.folio_en_edicion = None
+                    st.session_state.cliente_en_edicion = None
+                    st.session_state.vendedor_en_edicion = None
+                    st.session_state.obs_en_edicion = ""
+                    st.session_state.fp_cot_en_edicion = "Transferencia"
+                    st.session_state.cotizacion_actual = []
+                    st.rerun()
+            
+            folio_actual = st.session_state.folio_en_edicion if st.session_state.folio_en_edicion else obtener_siguiente_folio()
             
             st.subheader("1. Datos Generales")
             col_vendedor, col_folio = st.columns([3, 1])
-            with col_vendedor:
-                lista_vendedores = ["Gerente Gilber Carbajal", "Vendedora Laisha", "Vendedor Omar", "Vendedora Grisy"]
-                vendedor_seleccionado = st.selectbox("Atendido por:", lista_vendedores)
-            with col_folio:
-                st.info(f"Folio actual: **#{folio_actual}**")
-
+            
+            # --- NUEVA LISTA OFICIAL DE VENDEDORES ---
+            lista_vendedores = ["Gilber Carbajal", "Omar Santiago", "Lizedy Facundo", "Grisy Ojeda"]
+            idx_vendedor = lista_vendedores.index(st.session_state.vendedor_en_edicion) if st.session_state.vendedor_en_edicion in lista_vendedores else 0
+            
             lista_razones_sociales = [c.get("RAZON_SOCIAL", "Sin Razón Social") for c in clientes if c.get("RAZON_SOCIAL")]
-            cliente_seleccionado = st.selectbox("Selecciona un cliente:", lista_razones_sociales)
+            idx_cliente = lista_razones_sociales.index(st.session_state.cliente_en_edicion) if st.session_state.cliente_en_edicion in lista_razones_sociales else 0
+
+            with col_vendedor:
+                vendedor_seleccionado = st.selectbox("Atendido por:", lista_vendedores, index=idx_vendedor)
+            with col_folio:
+                st.info(f"Folio: **#{folio_actual}**")
+
+            col_c1, col_c2 = st.columns([2, 1])
+            with col_c1:
+                cliente_seleccionado = st.selectbox("Selecciona un cliente:", lista_razones_sociales, index=idx_cliente)
+            with col_c2:
+                # --- NUEVO: FORMA DE PAGO EN COTIZADOR ---
+                opciones_fp = ["Transferencia", "Efectivo", "Tarjeta", "Cheque", "Crédito"]
+                idx_fp = opciones_fp.index(st.session_state.fp_cot_en_edicion) if st.session_state.fp_cot_en_edicion in opciones_fp else 0
+                fp_cotizacion_seleccionada = st.selectbox("Forma de pago esperada:", opciones_fp, index=idx_fp)
+
+            # --- NUEVO: RECUADRO DE OBSERVACIONES Y SUCURSAL ---
+            observaciones_texto = st.text_area("Observaciones o Sucursal de entrega (Se imprimirá en el PDF):", value=st.session_state.obs_en_edicion, height=68)
             
             st.subheader("2. Agregar Productos y Precios")
             mapa_productos = {f"{p.get('CLAVE') or 'S/C'} - {p.get('PRODUCTO', 'Sin Nombre')}": p for p in productos if p.get("PRODUCTO")}
@@ -428,7 +476,6 @@ else:
             if st.button("Agregar a la cotización"):
                 if prod_info:
                     descuento_pct = float(prod_info.get("DESCUENTO", 0) or 0)
-                    
                     if precio_personalizado != precio_catalogo:
                         precio_final_unitario = precio_personalizado
                     else:
@@ -436,7 +483,6 @@ else:
                         precio_final_unitario = precio_catalogo - descuento_dinero
                         
                     subtotal_linea = precio_final_unitario * cantidad
-                    
                     st.session_state.cotizacion_actual.append({
                         "Clave": prod_info.get("Clave", prod_info.get("CLAVE", "")),
                         "Producto": producto_seleccionado,
@@ -457,25 +503,18 @@ else:
                 df_vista["Subtotal"] = df_vista["Subtotal"].apply(lambda x: f"${x:,.2f}")
                 st.dataframe(df_vista, use_container_width=True, hide_index=True)
                 
-                # --- NUEVA FUNCIÓN: MODIFICAR CARRITO (EDITAR Y ELIMINAR) ---
                 st.markdown("#### 🛠️ Modificar Carrito")
                 tab_edit, tab_del = st.tabs(["✏️ Editar Producto", "❌ Eliminar Producto"])
-                
                 opciones_carrito = [f"Línea {i+1}: {prod['Producto']} (Cant: {prod['Cant.']})" for i, prod in enumerate(st.session_state.cotizacion_actual)]
                 
                 with tab_edit:
                     col_sel, col_cant, col_precio, col_btn = st.columns([2, 1, 1, 1])
-                    with col_sel:
-                        item_a_editar = st.selectbox("Selecciona para editar:", opciones_carrito, key="sel_edit")
-                    
+                    with col_sel: item_a_editar = st.selectbox("Selecciona para editar:", opciones_carrito, key="sel_edit")
                     if item_a_editar:
                         idx_edit = opciones_carrito.index(item_a_editar)
                         prod_edit = st.session_state.cotizacion_actual[idx_edit]
-                        
-                        with col_cant:
-                            nueva_cant = st.number_input("Cantidad", min_value=1, value=int(prod_edit['Cant.']), key="cant_edit")
-                        with col_precio:
-                            nuevo_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_edit['Precio Unit.']), format="%.2f", key="precio_edit")
+                        with col_cant: nueva_cant = st.number_input("Cantidad", min_value=1, value=int(prod_edit['Cant.']), key="cant_edit")
+                        with col_precio: nuevo_precio = st.number_input("Precio ($)", min_value=0.0, value=float(prod_edit['Precio Unit.']), format="%.2f", key="precio_edit")
                         with col_btn:
                             st.markdown("<br>", unsafe_allow_html=True)
                             if st.button("✏️ Actualizar", use_container_width=True):
@@ -487,8 +526,7 @@ else:
 
                 with tab_del:
                     col_del1, col_del2 = st.columns([3, 1])
-                    with col_del1:
-                        item_a_borrar = st.selectbox("Selecciona para eliminar:", opciones_carrito, key="sel_del")
+                    with col_del1: item_a_borrar = st.selectbox("Selecciona para eliminar:", opciones_carrito, key="sel_del")
                     with col_del2:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("❌ Eliminar seleccionado", use_container_width=True):
@@ -496,7 +534,6 @@ else:
                             st.session_state.cotizacion_actual.pop(idx_del)
                             st.success("Producto eliminado del carrito.")
                             st.rerun()
-                # ------------------------------------------------
                 
                 suma_subtotal = df["Subtotal"].sum() if len(st.session_state.cotizacion_actual) > 0 else 0
                 iva = suma_subtotal * 0.16
@@ -512,36 +549,52 @@ else:
                     
                     st.markdown("---")
                     col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
-                    
                     cliente_completo = next((c for c in clientes if c.get("RAZON_SOCIAL") == cliente_seleccionado), {})
                     
                     with col_btn1:
-                        if st.button("💾 Guardar en Historial", use_container_width=True):
+                        texto_boton_guardar = "💾 Actualizar Folio" if st.session_state.folio_en_edicion else "💾 Guardar en Historial"
+                        if st.button(texto_boton_guardar, use_container_width=True):
                             cotizacion_data = {
                                 "cliente": cliente_seleccionado, 
                                 "vendedor": vendedor_seleccionado,
                                 "total": total_final,
                                 "detalles": st.session_state.cotizacion_actual,
                                 "estatus_operativo": "Pendiente de autorización",
-                                "estatus_financiero": "Pendiente de cobro"
+                                "observaciones": observaciones_texto,
+                                "forma_pago_cotizacion": fp_cotizacion_seleccionada
                             }
+                            
                             try:
-                                supabase.table("cotizaciones").insert(cotizacion_data).execute()
-                                st.success("¡Guardada exitosamente!")
+                                if st.session_state.folio_en_edicion:
+                                    supabase.table("cotizaciones").update(cotizacion_data).eq("id", st.session_state.folio_en_edicion).execute()
+                                    st.success(f"¡Folio #{st.session_state.folio_en_edicion} actualizado exitosamente!")
+                                else:
+                                    cotizacion_data["estatus_financiero"] = "Pendiente de cobro"
+                                    supabase.table("cotizaciones").insert(cotizacion_data).execute()
+                                    st.success("¡Guardada exitosamente!")
+                                    
                                 st.session_state.cotizacion_actual = []
+                                st.session_state.folio_en_edicion = None
+                                st.session_state.cliente_en_edicion = None
+                                st.session_state.vendedor_en_edicion = None
+                                st.session_state.obs_en_edicion = ""
+                                st.session_state.fp_cot_en_edicion = "Transferencia"
                                 st.rerun()
                             except Exception as e: 
                                 st.error(f"Error al guardar: {e}")
+                                
                     with col_btn2:
                         st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                     with col_btn3:
-                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual, observaciones_texto, fp_cotizacion_seleccionada), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
                     with col_btn4:
                         if st.button("🗑️ Limpiar Todo", use_container_width=True):
                             st.session_state.cotizacion_actual = []
                             st.rerun()
 
+    # ==========================================
     # 2. HISTORIAL Y COBRANZA
+    # ==========================================
     elif menu == "📂 Historial y Cobranza":
         st.title("📂 Historial y Cuentas por Cobrar (CxC)")
         historial = obtener_historial()
@@ -549,8 +602,7 @@ else:
             st.info("Aún no hay cotizaciones guardadas.")
         else:
             df_hist = pd.DataFrame(historial)
-            
-            for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-")]:
+            for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-"), ("observaciones", ""), ("forma_pago_cotizacion", "")]:
                 if col not in df_hist.columns: df_hist[col] = val
                 else: df_hist[col] = df_hist[col].fillna(val)
 
@@ -558,42 +610,31 @@ else:
             for idx, row in df_hist.iterrows():
                 f_creacion = pd.to_datetime(row.get("fecha"))
                 dias = (datetime.now() - f_creacion.tz_localize(None) if f_creacion.tzinfo else datetime.now() - f_creacion).days
-                
-                if row.get("estatus_operativo") == "No Autorizada":
-                    dias_atraso_lista.append("Cancelada")
-                elif row.get("estatus_financiero") == "Pagada":
-                    dias_atraso_lista.append("Pagado")
-                else:
-                    dias_atraso_lista.append(f"{dias} días")
+                if row.get("estatus_operativo") == "No Autorizada": dias_atraso_lista.append("Cancelada")
+                elif row.get("estatus_financiero") == "Pagada": dias_atraso_lista.append("Pagado")
+                else: dias_atraso_lista.append(f"{dias} días")
             df_hist["Atraso"] = dias_atraso_lista
 
             df_vista = df_hist[["id", "cliente", "vendedor", "estatus_operativo", "estatus_financiero", "Atraso", "total", "fecha"]].copy()
             df_vista["total"] = df_vista["total"].apply(lambda x: f"${float(x):,.2f}")
             df_vista["fecha"] = pd.to_datetime(df_vista["fecha"]).dt.strftime('%d/%m/%Y %H:%M')
-            
             st.dataframe(df_vista, column_config={"id": "Folio", "cliente": "Cliente", "vendedor": "Atendió", "estatus_operativo": "Operativo", "estatus_financiero": "Financiero", "Atraso": "Antigüedad", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
 
             st.markdown("---")
             st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
-            
             opciones_folios = [f"Folio #{r['id']} - {r['cliente']}" for r in historial]
             folio_sel_str = st.selectbox("Selecciona el folio a modificar:", opciones_folios)
             id_sel = int(folio_sel_str.split("#")[1].split(" -")[0])
             reg_sel = next((r for r in historial if r["id"] == id_sel), {})
 
             col_c1, col_c2 = st.columns(2)
-            
             with col_c1:
                 st.markdown("##### 📌 Carril Operativo")
                 opciones_op = ["Pendiente de autorización", "Autorizado", "Facturado", "No Autorizada"]
                 op_actual = reg_sel.get("estatus_operativo")
                 idx_op = opciones_op.index(op_actual) if op_actual in opciones_op else 0
                 nuevo_op = st.selectbox("Estatus Operativo:", opciones_op, index=idx_op)
-                
-                nuevo_folio_fiscal = reg_sel.get("folio_fiscal")
-                if nuevo_folio_fiscal is None:
-                    nuevo_folio_fiscal = ""
-                    
+                nuevo_folio_fiscal = reg_sel.get("folio_fiscal") or ""
                 if nuevo_op == "Facturado":
                     nuevo_folio_fiscal = st.text_input("Folio Fiscal de la Factura:", value=nuevo_folio_fiscal)
 
@@ -603,7 +644,6 @@ else:
                 fin_actual = reg_sel.get("estatus_financiero", "Pendiente de cobro")
                 idx_fin = opciones_fin.index(fin_actual) if fin_actual in opciones_fin else 0
                 nuevo_fin = st.selectbox("Estatus Financiero:", opciones_fin, index=idx_fin)
-                
                 nueva_forma_pago = "Transferencia"
                 nueva_fecha_pago = str(date.today())
                 
@@ -611,13 +651,10 @@ else:
                     opciones_pago = ["Transferencia", "Efectivo", "Tarjeta", "Cheque"]
                     fp_actual = reg_sel.get("forma_pago")
                     idx_fp = opciones_pago.index(fp_actual) if fp_actual in opciones_pago else 0
-                    nueva_forma_pago = st.selectbox("Forma de Pago:", opciones_pago, index=idx_fp)
-                    
+                    nueva_forma_pago = st.selectbox("Forma de Pago del depósito:", opciones_pago, index=idx_fp)
                     fe_actual = reg_sel.get("fecha_pago")
-                    try:
-                        dt_val = datetime.strptime(str(fe_actual), "%Y-%m-%d").date() if fe_actual else date.today()
-                    except:
-                        dt_val = date.today()
+                    try: dt_val = datetime.strptime(str(fe_actual), "%Y-%m-%d").date() if fe_actual else date.today()
+                    except: dt_val = date.today()
                     nueva_fecha_pago = str(st.date_input("Fecha en que se pagó:", value=dt_val))
 
             if st.button("💾 Guardar Cambios de Estatus", use_container_width=True):
@@ -636,6 +673,17 @@ else:
                     st.error(f"Error al actualizar: {e}")
 
             st.markdown("---")
+            st.markdown("##### 🔄 Modificar Productos del Folio (Viaje en el tiempo)")
+            if st.button("✏️ Cargar este Folio al Cotizador para editar productos", use_container_width=True):
+                st.session_state.folio_en_edicion = reg_sel["id"]
+                st.session_state.cliente_en_edicion = reg_sel["cliente"]
+                st.session_state.vendedor_en_edicion = reg_sel.get("vendedor", "Gilber Carbajal")
+                st.session_state.obs_en_edicion = reg_sel.get("observaciones", "")
+                st.session_state.fp_cot_en_edicion = reg_sel.get("forma_pago_cotizacion", "Transferencia")
+                st.session_state.cotizacion_actual = reg_sel.get("detalles", []) if reg_sel.get("detalles") else []
+                st.success("¡Folio cargado! Ve al menú '📝 Cotizador' para hacer los cambios.")
+            
+            st.markdown("---")
             col_desc1, col_desc2 = st.columns(2)
             
             with col_desc1:
@@ -650,8 +698,12 @@ else:
                         dt_cot = reg_dl["detalles"]
                         s_sub = sum([float(i["Subtotal"]) for i in dt_cot])
                         iv = s_sub * 0.16
-                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "S/D"), id_dl)
-                        st.download_button("📥 Descargar PDF de Cotización", data=pdf_rec, file_name=f"Cotizacion_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
+                        
+                        obs_rec = reg_dl.get("observaciones", "")
+                        fp_rec = reg_dl.get("forma_pago_cotizacion", "")
+                        
+                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "Gilber Carbajal"), id_dl, obs_rec, fp_rec)
+                        st.download_button("📥 Descargar PDF", data=pdf_rec, file_name=f"Cotizacion_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
 
             with col_desc2:
                 st.subheader("📑 Estado de Cuenta por Cliente")
@@ -659,7 +711,6 @@ else:
                 if lista_nombres_clientes:
                     cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
                     facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada"]
-                    
                     if len(facturas_cliente) > 0:
                         cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
                         pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
@@ -667,21 +718,20 @@ else:
                     else:
                         st.info("Este cliente no tiene facturas pendientes o activas.")
 
-    # 3. MÉTRICAS E INTELIGENCIA DE NEGOCIOS
+    # ==========================================
+    # 3. MÉTRICAS
+    # ==========================================
     elif menu == "📊 Métricas":
         st.title("📊 Panel de Inteligencia Financiera")
         historial = obtener_historial()
-        
         if len(historial) > 0:
             df = pd.DataFrame(historial)
             df['total'] = df['total'].astype(float)
-            
             for col, val in [("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("vendedor", "S/D")]:
                 if col not in df.columns: df[col] = val
                 else: df[col] = df[col].fillna(val)
 
             df_validas = df[df['estatus_operativo'] != 'No Autorizada']
-
             col1, col2, col3, col4 = st.columns(4)
             t_historico = df_validas['total'].sum()
             t_cobrado = df_validas[df_validas['estatus_financiero'] == 'Pagada']['total'].sum()
@@ -692,9 +742,7 @@ else:
             col2.metric("Cobrado en Banco", f"${t_cobrado:,.2f}")
             col3.metric("Por Cobrar (CxC)", f"${t_por_cobrar:,.2f}", delta_color="inverse")
             col4.metric("Operativo Autorizado", f"${t_autorizado:,.2f}")
-            
             st.markdown("---")
-            
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 st.subheader("Ventas por Vendedor (Reales)")
@@ -710,37 +758,130 @@ else:
                 top_deuda = df_deuda.groupby("cliente")["total"].sum().sort_values(ascending=False).head(5).reset_index()
                 top_deuda["total"] = top_deuda["total"].apply(lambda x: f"${x:,.2f}")
                 st.dataframe(top_deuda, column_config={"cliente": "Cliente", "total": "Deuda Pendiente"}, use_container_width=True, hide_index=True)
-            else:
-                st.success("¡Excelente! No hay saldos pendientes de cobro en este momento.")
-        else:
-            st.info("Aún no hay suficientes datos para mostrar métricas.")
+            else: st.success("¡Excelente! No hay saldos pendientes de cobro en este momento.")
+        else: st.info("Aún no hay suficientes datos para mostrar métricas.")
 
-    # 4. ADMINISTRACIÓN
+    # ==========================================
+    # 4. ADMINISTRACIÓN (NUEVA EDICIÓN)
+    # ==========================================
     elif menu == "⚙️ Panel de Administrador":
         st.title("⚙️ Configuración del ERP")
-        tab1, tab2 = st.tabs(["📦 Nuevo Producto", "🏢 Nuevo Cliente"])
+        tab1, tab2 = st.tabs(["📦 Catálogo de Productos", "🏢 Catálogo de Clientes"])
+        
+        # --- PRODUCTOS ---
         with tab1:
-            col1, col2 = st.columns(2)
-            with col1:
-                clave = st.text_input("CLAVE")
-                producto = st.text_input("PRODUCTO")
-                unidad = st.selectbox("UNIDAD", ["Pza", "Kg", "Litro", "Galón", "Servicio"])
-            with col2:
-                precio = st.number_input("PRECIO", min_value=0.0, format="%.2f")
-                descuento = st.number_input("DESCUENTO (%)", min_value=0.0, format="%.2f")
-            if st.button("Guardar Producto"):
-                nuevo_producto = {"CLAVE": clave, "PRODUCTO": producto, "PRECIO": precio, "DESCUENTO": descuento, "UNIDAD": unidad}
-                try:
-                    supabase.table("productos").insert(nuevo_producto).execute()
-                    st.success("¡Guardado!")
-                except: st.error("Error al guardar.")
+            st.subheader("Gestión de Productos")
+            sub_p1, sub_p2 = st.tabs(["Crear Nuevo", "Editar Existente"])
+            with sub_p1:
+                col1, col2 = st.columns(2)
+                with col1:
+                    clave = st.text_input("CLAVE")
+                    producto = st.text_input("PRODUCTO")
+                    unidad = st.selectbox("UNIDAD", ["Pza", "Kg", "Litro", "Galón", "Servicio"])
+                with col2:
+                    precio = st.number_input("PRECIO", min_value=0.0, format="%.2f")
+                    descuento = st.number_input("DESCUENTO (%)", min_value=0.0, format="%.2f")
+                if st.button("Guardar Producto Nuevo"):
+                    nuevo_producto = {"CLAVE": clave, "PRODUCTO": producto, "PRECIO": precio, "DESCUENTO": descuento, "UNIDAD": unidad}
+                    try:
+                        supabase.table("productos").insert(nuevo_producto).execute()
+                        st.success("¡Producto guardado exitosamente!")
+                    except: st.error("Error al guardar.")
+            
+            with sub_p2:
+                lista_prod_admin = obtener_productos()
+                if lista_prod_admin:
+                    mapa_p_admin = {f"{p.get('id', p.get('CLAVE', ''))} - {p.get('PRODUCTO')}": p for p in lista_prod_admin if p.get("PRODUCTO")}
+                    sel_p_str = st.selectbox("Seleccionar producto para editar:", list(mapa_p_admin.keys()))
+                    
+                    if sel_p_str:
+                        prod_data = mapa_p_admin[sel_p_str]
+                        id_prod = prod_data.get("id")
+                        
+                        col_e1, col_e2 = st.columns(2)
+                        with col_e1:
+                            e_clave = st.text_input("CLAVE", value=prod_data.get("CLAVE", ""))
+                            e_producto = st.text_input("PRODUCTO", value=prod_data.get("PRODUCTO", ""))
+                            u_actual = prod_data.get("UNIDAD", "Pza")
+                            e_unidad = st.selectbox("UNIDAD", ["Pza", "Kg", "Litro", "Galón", "Servicio"], index=["Pza", "Kg", "Litro", "Galón", "Servicio"].index(u_actual) if u_actual in ["Pza", "Kg", "Litro", "Galón", "Servicio"] else 0, key="u_edit")
+                        with col_e2:
+                            e_precio = st.number_input("PRECIO", min_value=0.0, value=float(prod_data.get("PRECIO", 0) or 0), format="%.2f", key="p_edit")
+                            e_descuento = st.number_input("DESCUENTO (%)", min_value=0.0, value=float(prod_data.get("DESCUENTO", 0) or 0), format="%.2f", key="d_edit")
+                        
+                        if st.button("Actualizar Producto"):
+                            datos_act_p = {"CLAVE": e_clave, "PRODUCTO": e_producto, "PRECIO": e_precio, "DESCUENTO": e_descuento, "UNIDAD": e_unidad}
+                            try:
+                                if id_prod:
+                                    supabase.table("productos").update(datos_act_p).eq("id", id_prod).execute()
+                                else:
+                                    supabase.table("productos").update(datos_act_p).eq("CLAVE", prod_data.get("CLAVE")).execute()
+                                st.success("¡Producto actualizado exitosamente!")
+                                st.rerun()
+                            except Exception as e: st.error(f"Error al actualizar: {e}")
+                else: st.info("No hay productos registrados.")
+
+        # --- CLIENTES ---
         with tab2:
-            rfc = st.text_input("RFC")
-            razon_social = st.text_input("RAZÓN SOCIAL")
-            forma_pago = st.selectbox("FORMA DE PAGO", ["Transferencia", "Efectivo", "Tarjeta", "Crédito"])
-            if st.button("Guardar Cliente"):
-                nuevo_cliente = {"RFC": rfc, "RAZON_SOCIAL": razon_social, "FORMA_PAGO": forma_pago}
-                try:
-                    supabase.table("clientes").insert(nuevo_cliente).execute()
-                    st.success("¡Guardado!")
-                except: st.error("Error al guardar.")
+            st.subheader("Gestión de Clientes")
+            sub_c1, sub_c2 = st.tabs(["Crear Nuevo", "Editar Existente"])
+            
+            with sub_c1:
+                rfc = st.text_input("RFC")
+                razon_social = st.text_input("RAZÓN SOCIAL")
+                forma_pago = st.selectbox("FORMA DE PAGO HABITUAL", ["Transferencia", "Efectivo", "Tarjeta", "Crédito"])
+                
+                st.markdown("**Dirección**")
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    calle = st.text_input("Calle")
+                    no_ext = st.text_input("No. Exterior")
+                    colonia = st.text_input("Colonia")
+                with col_d2:
+                    municipio = st.text_input("Municipio / Ciudad")
+                    estado = st.text_input("Estado")
+                    cp = st.text_input("Código Postal")
+                    
+                if st.button("Guardar Cliente Nuevo"):
+                    nuevo_cliente = {"RFC": rfc, "RAZON_SOCIAL": razon_social, "FORMA_PAGO": forma_pago, "CALLE": calle, "NO_EXTERIOR": no_ext, "COLONIA": colonia, "MUNICIPIO": municipio, "ESTADO": estado, "CP": cp}
+                    try:
+                        supabase.table("clientes").insert(nuevo_cliente).execute()
+                        st.success("¡Cliente guardado exitosamente!")
+                    except: st.error("Error al guardar.")
+            
+            with sub_c2:
+                lista_cli_admin = obtener_clientes()
+                if lista_cli_admin:
+                    mapa_c_admin = {f"{c.get('RAZON_SOCIAL', 'Sin Nombre')} (RFC: {c.get('RFC', 'S/D')})": c for c in lista_cli_admin if c.get("RAZON_SOCIAL")}
+                    sel_c_str = st.selectbox("Seleccionar cliente para editar:", list(mapa_c_admin.keys()))
+                    
+                    if sel_c_str:
+                        cli_data = mapa_c_admin[sel_c_str]
+                        id_cli = cli_data.get("id")
+                        
+                        e_rfc = st.text_input("RFC", value=cli_data.get("RFC", ""), key="c_rfc")
+                        e_razon_social = st.text_input("RAZÓN SOCIAL", value=cli_data.get("RAZON_SOCIAL", ""), key="c_rs")
+                        fp_act = cli_data.get("FORMA_PAGO", "Transferencia")
+                        e_forma_pago = st.selectbox("FORMA DE PAGO HABITUAL", ["Transferencia", "Efectivo", "Tarjeta", "Crédito"], index=["Transferencia", "Efectivo", "Tarjeta", "Crédito"].index(fp_act) if fp_act in ["Transferencia", "Efectivo", "Tarjeta", "Crédito"] else 0, key="c_fp")
+                        
+                        st.markdown("**Dirección**")
+                        col_ed1, col_ed2 = st.columns(2)
+                        with col_ed1:
+                            e_calle = st.text_input("Calle", value=cli_data.get("CALLE", ""), key="c_calle")
+                            e_no_ext = st.text_input("No. Exterior", value=cli_data.get("NO_EXTERIOR", ""), key="c_next")
+                            e_colonia = st.text_input("Colonia", value=cli_data.get("COLONIA", ""), key="c_col")
+                        with col_ed2:
+                            e_municipio = st.text_input("Municipio / Ciudad", value=cli_data.get("MUNICIPIO", ""), key="c_mun")
+                            e_estado = st.text_input("Estado", value=cli_data.get("ESTADO", ""), key="c_est")
+                            e_cp = st.text_input("Código Postal", value=cli_data.get("CP", ""), key="c_cp")
+
+                        if st.button("Actualizar Cliente"):
+                            datos_act_c = {"RFC": e_rfc, "RAZON_SOCIAL": e_razon_social, "FORMA_PAGO": e_forma_pago, "CALLE": e_calle, "NO_EXTERIOR": e_no_ext, "COLONIA": e_colonia, "MUNICIPIO": e_municipio, "ESTADO": e_estado, "CP": e_cp}
+                            try:
+                                if id_cli:
+                                    supabase.table("clientes").update(datos_act_c).eq("id", id_cli).execute()
+                                else:
+                                    supabase.table("clientes").update(datos_act_c).eq("RAZON_SOCIAL", cli_data.get("RAZON_SOCIAL")).execute()
+                                st.success("¡Cliente actualizado exitosamente!")
+                                st.rerun()
+                            except Exception as e: st.error(f"Error al actualizar: {e}")
+                else: st.info("No hay clientes registrados.")
