@@ -51,7 +51,7 @@ def obtener_siguiente_folio():
         return 1
 
 # --- 2. EXCEL GENERAL ---
-def generar_excel(datos_cotizacion, cliente, subtotal, iva, total):
+def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=True):
     wb = Workbook()
     ws = wb.active
     ws.title = "Cotización"
@@ -91,10 +91,13 @@ def generar_excel(datos_cotizacion, cliente, subtotal, iva, total):
         ws.cell(row=final_row+1, column=6).font = bold_font
         ws.cell(row=final_row+1, column=7).value = subtotal
         ws.cell(row=final_row+1, column=7).number_format = '"$"#,##0.00'
-        ws.cell(row=final_row+2, column=6).value = "IVA (16%):"
+        
+        texto_iva = "IVA (16%):" if incluye_iva else "IVA (0%):"
+        ws.cell(row=final_row+2, column=6).value = texto_iva
         ws.cell(row=final_row+2, column=6).font = bold_font
         ws.cell(row=final_row+2, column=7).value = iva
         ws.cell(row=final_row+2, column=7).number_format = '"$"#,##0.00'
+        
         ws.cell(row=final_row+3, column=6).value = "Total:"
         ws.cell(row=final_row+3, column=6).font = bold_font
         ws.cell(row=final_row+3, column=7).value = total
@@ -140,7 +143,7 @@ class PDFQuimsagi(FPDF):
         self.cell(0, 5, "Ventas: ventas1quimsagi@gmail.com  |  Tel: 998 459 2513", ln=True, align='C')
         self.cell(0, 5, "Administracion: direccionquimsagi@gmail.com", ln=True, align='C')
 
-def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio, observaciones="", forma_pago=""):
+def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio, observaciones="", forma_pago="", incluye_iva=True):
     pdf = PDFQuimsagi()
     pdf.add_page()
     
@@ -258,7 +261,8 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
     pdf.ln()
     
     pdf.cell(margen_izq, 7, "", border=0)
-    pdf.cell(col_w["Precio Unit."], 7, "IVA (16%):", border=0, align='R')
+    texto_iva = "IVA (16%):" if incluye_iva else "IVA (0%):"
+    pdf.cell(col_w["Precio Unit."], 7, texto_iva, border=0, align='R')
     pdf.cell(col_w["Subtotal"], 7, f"${iva:,.2f}", border=0, align='R')
     pdf.ln()
     
@@ -384,6 +388,7 @@ if 'cliente_en_edicion' not in st.session_state: st.session_state.cliente_en_edi
 if 'vendedor_en_edicion' not in st.session_state: st.session_state.vendedor_en_edicion = None
 if 'obs_en_edicion' not in st.session_state: st.session_state.obs_en_edicion = ""
 if 'fp_cot_en_edicion' not in st.session_state: st.session_state.fp_cot_en_edicion = "Transferencia"
+if 'incluye_iva_en_edicion' not in st.session_state: st.session_state.incluye_iva_en_edicion = True
 
 if not st.session_state.autenticado:
     st.title("🔒 Acceso al Sistema")
@@ -398,8 +403,6 @@ if not st.session_state.autenticado:
             st.error("Usuario o contraseña incorrectos")
 else:
     st.sidebar.title("Menú Principal")
-    
-    # Menú limpio sin la llave que causaba el conflicto
     menu = st.sidebar.radio("Ir a:", ["📝 Cotizador", "📂 Historial y Cobranza", "📊 Métricas", "⚙️ Panel de Administrador"])
     
     if st.sidebar.button("Cerrar Sesión"):
@@ -425,6 +428,7 @@ else:
                     st.session_state.vendedor_en_edicion = None
                     st.session_state.obs_en_edicion = ""
                     st.session_state.fp_cot_en_edicion = "Transferencia"
+                    st.session_state.incluye_iva_en_edicion = True
                     st.session_state.cotizacion_actual = []
                     st.rerun()
             
@@ -451,6 +455,9 @@ else:
                 opciones_fp = ["Transferencia", "Efectivo", "Tarjeta", "Cheque", "Crédito"]
                 idx_fp = opciones_fp.index(st.session_state.fp_cot_en_edicion) if st.session_state.fp_cot_en_edicion in opciones_fp else 0
                 fp_cotizacion_seleccionada = st.selectbox("Forma de pago esperada:", opciones_fp, index=idx_fp)
+                
+                # --- NUEVO: CHECKBOX DE IVA ---
+                aplicar_iva = st.checkbox("☑️ Incluir IVA (16%)", value=st.session_state.get('incluye_iva_en_edicion', True))
 
             observaciones_texto = st.text_area("Observaciones o Sucursal de entrega (Se imprimirá en el PDF):", value=st.session_state.obs_en_edicion, height=68)
             
@@ -533,8 +540,9 @@ else:
                             st.success("Producto eliminado del carrito.")
                             st.rerun()
                 
+                # --- NUEVO: CÁLCULO DINÁMICO DEL IVA ---
                 suma_subtotal = df["Subtotal"].sum() if len(st.session_state.cotizacion_actual) > 0 else 0
-                iva = suma_subtotal * 0.16
+                iva = suma_subtotal * 0.16 if aplicar_iva else 0.0
                 total_final = suma_subtotal + iva
                 
                 if len(st.session_state.cotizacion_actual) > 0:
@@ -542,7 +550,8 @@ else:
                     col_blank, col_totales = st.columns([3, 1])
                     with col_totales:
                         st.write(f"**Subtotal:** ${suma_subtotal:,.2f}")
-                        st.write(f"**IVA (16%):** ${iva:,.2f}")
+                        texto_iva_ui = "**IVA (16%):**" if aplicar_iva else "**IVA (0%):**"
+                        st.write(f"{texto_iva_ui} ${iva:,.2f}")
                         st.write(f"### **Total:** ${total_final:,.2f}")
                     
                     st.markdown("---")
@@ -559,7 +568,8 @@ else:
                                 "detalles": st.session_state.cotizacion_actual,
                                 "estatus_operativo": "Pendiente de autorización",
                                 "observaciones": observaciones_texto,
-                                "forma_pago_cotizacion": fp_cotizacion_seleccionada
+                                "forma_pago_cotizacion": fp_cotizacion_seleccionada,
+                                "incluye_iva": aplicar_iva
                             }
                             
                             try:
@@ -577,14 +587,15 @@ else:
                                 st.session_state.vendedor_en_edicion = None
                                 st.session_state.obs_en_edicion = ""
                                 st.session_state.fp_cot_en_edicion = "Transferencia"
+                                st.session_state.incluye_iva_en_edicion = True
                                 st.rerun()
                             except Exception as e: 
                                 st.error(f"Error al guardar: {e}")
                                 
                     with col_btn2:
-                        st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                        st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final, aplicar_iva), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                     with col_btn3:
-                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual, observaciones_texto, fp_cotizacion_seleccionada), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual, observaciones_texto, fp_cotizacion_seleccionada, aplicar_iva), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
                     with col_btn4:
                         if st.button("🗑️ Limpiar Todo", use_container_width=True):
                             st.session_state.cotizacion_actual = []
@@ -622,7 +633,6 @@ else:
             st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
             opciones_folios = [f"Folio #{r['id']} - {r['cliente']}" for r in historial]
             
-            # --- CANDADO DE MEMORIA PARA EL SELECTBOX ---
             folio_sel_str = st.selectbox("Selecciona el folio a modificar:", opciones_folios, key="memoria_folio_admin")
             
             id_sel = int(folio_sel_str.split("#")[1].split(" -")[0])
@@ -681,6 +691,11 @@ else:
                 st.session_state.vendedor_en_edicion = reg_sel.get("vendedor", "Gilber Carbajal")
                 st.session_state.obs_en_edicion = reg_sel.get("observaciones", "")
                 st.session_state.fp_cot_en_edicion = reg_sel.get("forma_pago_cotizacion", "Transferencia")
+                
+                # --- NUEVO: RECUPERAR EL ESTATUS DE IVA ---
+                iva_bd = reg_sel.get("incluye_iva")
+                st.session_state.incluye_iva_en_edicion = True if iva_bd is None else iva_bd
+                
                 st.session_state.cotizacion_actual = reg_sel.get("detalles", []) if reg_sel.get("detalles") else []
                 st.success("✅ ¡Folio cargado con éxito! Haz clic en '📝 Cotizador' en el menú de la izquierda para ver y editar los productos.")
             
@@ -698,12 +713,16 @@ else:
                         cli_comp = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == reg_dl["cliente"]), {"RAZON_SOCIAL": reg_dl["cliente"]})
                         dt_cot = reg_dl["detalles"]
                         s_sub = sum([float(i["Subtotal"]) for i in dt_cot])
-                        iv = s_sub * 0.16
+                        
+                        # --- NUEVO: RECALCULAR IVA EN EL HISTORIAL PARA PDF ---
+                        iva_recuperado = reg_dl.get("incluye_iva")
+                        iva_recuperado = True if iva_recuperado is None else iva_recuperado
+                        iv = s_sub * 0.16 if iva_recuperado else 0.0
                         
                         obs_rec = reg_dl.get("observaciones", "")
                         fp_rec = reg_dl.get("forma_pago_cotizacion", "")
                         
-                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "Gilber Carbajal"), id_dl, obs_rec, fp_rec)
+                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "Gilber Carbajal"), id_dl, obs_rec, fp_rec, iva_recuperado)
                         st.download_button("📥 Descargar PDF", data=pdf_rec, file_name=f"Cotizacion_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
 
             with col_desc2:
