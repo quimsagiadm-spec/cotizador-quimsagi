@@ -51,10 +51,10 @@ def obtener_siguiente_folio():
         return 1
 
 # --- 2. EXCEL GENERAL ---
-def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=True):
+def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=True, tipo_documento="Cotización"):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Cotización"
+    ws.title = tipo_documento
 
     header_fill = PatternFill(start_color="2B3A42", end_color="2B3A42", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True)
@@ -62,7 +62,7 @@ def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=T
     bold_font = Font(bold=True)
     border_thin = Border(left=Side(style='thin', color='E0E0E0'), right=Side(style='thin', color='E0E0E0'), top=Side(style='thin', color='E0E0E0'), bottom=Side(style='thin', color='E0E0E0'))
 
-    ws['A1'] = "COTIZACIÓN QUIMSAGI"
+    ws['A1'] = f"{tipo_documento.upper()} QUIMSAGI"
     ws['A1'].font = title_font
     ws['A2'] = f"Cliente: {cliente}"
     ws['A2'].font = bold_font
@@ -138,12 +138,12 @@ class PDFQuimsagi(FPDF):
         self.set_y(-25)
         self.set_font("Arial", 'B', 10)
         self.set_text_color(26, 82, 118) 
-        self.cell(0, 5, "Favor de confirmar la cotizacion con su vendedor", ln=True, align='C')
+        self.cell(0, 5, "Favor de confirmar los detalles con su vendedor", ln=True, align='C')
         self.set_font("Arial", 'B', 9)
         self.cell(0, 5, "Ventas: ventas1quimsagi@gmail.com  |  Tel: 998 459 2513", ln=True, align='C')
         self.cell(0, 5, "Administracion: direccionquimsagi@gmail.com", ln=True, align='C')
 
-def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio, observaciones="", forma_pago="", incluye_iva=True):
+def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, folio, observaciones="", forma_pago="", incluye_iva=True, tipo_documento="Cotización"):
     pdf = PDFQuimsagi()
     pdf.add_page()
     
@@ -172,7 +172,7 @@ def generar_pdf(datos_cotizacion, cliente_info, subtotal, iva, total, vendedor, 
 
     pdf.set_font("Arial", 'B', 18)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 10, f"COTIZACION #{folio}", ln=True, align='R')
+    pdf.cell(0, 10, f"{tipo_documento.upper()} #{folio}", ln=True, align='R')
     
     pdf.set_font("Arial", 'I', 10)
     pdf.set_text_color(100, 100, 100)
@@ -389,6 +389,7 @@ if 'vendedor_en_edicion' not in st.session_state: st.session_state.vendedor_en_e
 if 'obs_en_edicion' not in st.session_state: st.session_state.obs_en_edicion = ""
 if 'fp_cot_en_edicion' not in st.session_state: st.session_state.fp_cot_en_edicion = "Transferencia"
 if 'incluye_iva_en_edicion' not in st.session_state: st.session_state.incluye_iva_en_edicion = True
+if 'tipo_doc_en_edicion' not in st.session_state: st.session_state.tipo_doc_en_edicion = "Cotización"
 
 if not st.session_state.autenticado:
     st.title("🔒 Acceso al Sistema")
@@ -422,13 +423,14 @@ else:
         else:
             if st.session_state.folio_en_edicion:
                 st.warning(f"⚠️ ESTÁS EDITANDO EL FOLIO #{st.session_state.folio_en_edicion} DESDE EL HISTORIAL")
-                if st.button("❌ Cancelar edición y hacer cotización nueva", use_container_width=True):
+                if st.button("❌ Cancelar edición y hacer un documento nuevo", use_container_width=True):
                     st.session_state.folio_en_edicion = None
                     st.session_state.cliente_en_edicion = None
                     st.session_state.vendedor_en_edicion = None
                     st.session_state.obs_en_edicion = ""
                     st.session_state.fp_cot_en_edicion = "Transferencia"
                     st.session_state.incluye_iva_en_edicion = True
+                    st.session_state.tipo_doc_en_edicion = "Cotización"
                     st.session_state.cotizacion_actual = []
                     st.rerun()
             
@@ -456,7 +458,11 @@ else:
                 idx_fp = opciones_fp.index(st.session_state.fp_cot_en_edicion) if st.session_state.fp_cot_en_edicion in opciones_fp else 0
                 fp_cotizacion_seleccionada = st.selectbox("Forma de pago esperada:", opciones_fp, index=idx_fp)
                 
-                # --- NUEVO: CHECKBOX DE IVA ---
+                # --- NUEVO: SELECTOR DE TIPO DE DOCUMENTO ---
+                opciones_doc = ["Cotización", "Nota de Venta"]
+                idx_doc = opciones_doc.index(st.session_state.tipo_doc_en_edicion) if st.session_state.tipo_doc_en_edicion in opciones_doc else 0
+                tipo_doc_seleccionado = st.selectbox("Tipo de documento:", opciones_doc, index=idx_doc)
+                
                 aplicar_iva = st.checkbox("☑️ Incluir IVA (16%)", value=st.session_state.get('incluye_iva_en_edicion', True))
 
             observaciones_texto = st.text_area("Observaciones o Sucursal de entrega (Se imprimirá en el PDF):", value=st.session_state.obs_en_edicion, height=68)
@@ -540,7 +546,6 @@ else:
                             st.success("Producto eliminado del carrito.")
                             st.rerun()
                 
-                # --- NUEVO: CÁLCULO DINÁMICO DEL IVA ---
                 suma_subtotal = df["Subtotal"].sum() if len(st.session_state.cotizacion_actual) > 0 else 0
                 iva = suma_subtotal * 0.16 if aplicar_iva else 0.0
                 total_final = suma_subtotal + iva
@@ -569,7 +574,8 @@ else:
                                 "estatus_operativo": "Pendiente de autorización",
                                 "observaciones": observaciones_texto,
                                 "forma_pago_cotizacion": fp_cotizacion_seleccionada,
-                                "incluye_iva": aplicar_iva
+                                "incluye_iva": aplicar_iva,
+                                "tipo_documento": tipo_doc_seleccionado
                             }
                             
                             try:
@@ -588,14 +594,15 @@ else:
                                 st.session_state.obs_en_edicion = ""
                                 st.session_state.fp_cot_en_edicion = "Transferencia"
                                 st.session_state.incluye_iva_en_edicion = True
+                                st.session_state.tipo_doc_en_edicion = "Cotización"
                                 st.rerun()
                             except Exception as e: 
                                 st.error(f"Error al guardar: {e}")
                                 
                     with col_btn2:
-                        st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final, aplicar_iva), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                        st.download_button("📥 Descargar Excel", data=generar_excel(st.session_state.cotizacion_actual, cliente_seleccionado, suma_subtotal, iva, total_final, aplicar_iva, tipo_doc_seleccionado), file_name=f"{tipo_doc_seleccionado}_Folio{folio_actual}_{cliente_seleccionado}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                     with col_btn3:
-                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual, observaciones_texto, fp_cotizacion_seleccionada, aplicar_iva), file_name=f"Cotizacion_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+                        st.download_button("📄 Descargar PDF", data=generar_pdf(st.session_state.cotizacion_actual, cliente_completo, suma_subtotal, iva, total_final, vendedor_seleccionado, folio_actual, observaciones_texto, fp_cotizacion_seleccionada, aplicar_iva, tipo_doc_seleccionado), file_name=f"{tipo_doc_seleccionado}_Folio{folio_actual}_{cliente_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
                     with col_btn4:
                         if st.button("🗑️ Limpiar Todo", use_container_width=True):
                             st.session_state.cotizacion_actual = []
@@ -611,7 +618,7 @@ else:
             st.info("Aún no hay cotizaciones guardadas.")
         else:
             df_hist = pd.DataFrame(historial)
-            for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-"), ("observaciones", ""), ("forma_pago_cotizacion", "")]:
+            for col, val in [("vendedor", "S/D"), ("estatus_operativo", "Pendiente de autorización"), ("estatus_financiero", "Pendiente de cobro"), ("folio_fiscal", "-"), ("forma_pago", "-"), ("observaciones", ""), ("forma_pago_cotizacion", ""), ("tipo_documento", "Cotización")]:
                 if col not in df_hist.columns: df_hist[col] = val
                 else: df_hist[col] = df_hist[col].fillna(val)
 
@@ -624,10 +631,11 @@ else:
                 else: dias_atraso_lista.append(f"{dias} días")
             df_hist["Atraso"] = dias_atraso_lista
 
-            df_vista = df_hist[["id", "cliente", "vendedor", "estatus_operativo", "estatus_financiero", "Atraso", "total", "fecha"]].copy()
+            # Agregamos la columna de tipo de documento a la vista de la tabla
+            df_vista = df_hist[["id", "tipo_documento", "cliente", "vendedor", "estatus_operativo", "estatus_financiero", "Atraso", "total", "fecha"]].copy()
             df_vista["total"] = df_vista["total"].apply(lambda x: f"${float(x):,.2f}")
             df_vista["fecha"] = pd.to_datetime(df_vista["fecha"]).dt.strftime('%d/%m/%Y %H:%M')
-            st.dataframe(df_vista, column_config={"id": "Folio", "cliente": "Cliente", "vendedor": "Atendió", "estatus_operativo": "Operativo", "estatus_financiero": "Financiero", "Atraso": "Antigüedad", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
+            st.dataframe(df_vista, column_config={"id": "Folio", "tipo_documento": "Tipo", "cliente": "Cliente", "vendedor": "Atendió", "estatus_operativo": "Operativo", "estatus_financiero": "Financiero", "Atraso": "Antigüedad", "total": "Total", "fecha": "Fecha"}, use_container_width=True, hide_index=True)
 
             st.markdown("---")
             st.subheader("⚡ Administrar Estatus y Cobranza de un Folio")
@@ -691,8 +699,8 @@ else:
                 st.session_state.vendedor_en_edicion = reg_sel.get("vendedor", "Gilber Carbajal")
                 st.session_state.obs_en_edicion = reg_sel.get("observaciones", "")
                 st.session_state.fp_cot_en_edicion = reg_sel.get("forma_pago_cotizacion", "Transferencia")
+                st.session_state.tipo_doc_en_edicion = reg_sel.get("tipo_documento", "Cotización")
                 
-                # --- NUEVO: RECUPERAR EL ESTATUS DE IVA ---
                 iva_bd = reg_sel.get("incluye_iva")
                 st.session_state.incluye_iva_en_edicion = True if iva_bd is None else iva_bd
                 
@@ -714,16 +722,16 @@ else:
                         dt_cot = reg_dl["detalles"]
                         s_sub = sum([float(i["Subtotal"]) for i in dt_cot])
                         
-                        # --- NUEVO: RECALCULAR IVA EN EL HISTORIAL PARA PDF ---
                         iva_recuperado = reg_dl.get("incluye_iva")
                         iva_recuperado = True if iva_recuperado is None else iva_recuperado
                         iv = s_sub * 0.16 if iva_recuperado else 0.0
                         
                         obs_rec = reg_dl.get("observaciones", "")
                         fp_rec = reg_dl.get("forma_pago_cotizacion", "")
+                        tipo_doc_rec = reg_dl.get("tipo_documento", "Cotización")
                         
-                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "Gilber Carbajal"), id_dl, obs_rec, fp_rec, iva_recuperado)
-                        st.download_button("📥 Descargar PDF", data=pdf_rec, file_name=f"Cotizacion_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
+                        pdf_rec = generar_pdf(dt_cot, cli_comp, s_sub, iv, float(reg_dl["total"]), reg_dl.get("vendedor", "Gilber Carbajal"), id_dl, obs_rec, fp_rec, iva_recuperado, tipo_doc_rec)
+                        st.download_button("📥 Descargar PDF", data=pdf_rec, file_name=f"{tipo_doc_rec}_Folio{id_dl}_{reg_dl['cliente']}.pdf", mime="application/pdf", use_container_width=True)
 
             with col_desc2:
                 st.subheader("📑 Estado de Cuenta por Cliente")
