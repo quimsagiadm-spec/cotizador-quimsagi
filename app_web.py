@@ -50,7 +50,7 @@ def obtener_siguiente_folio():
     except:
         return 1
 
-# --- 2. EXCEL GENERAL ---
+# --- 2. EXPORTACIONES EXCEL ---
 def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=True, tipo_documento="Cotización"):
     wb = Workbook()
     ws = wb.active
@@ -113,6 +113,12 @@ def generar_excel(datos_cotizacion, cliente, subtotal, iva, total, incluye_iva=T
 
     output = io.BytesIO()
     wb.save(output)
+    return output.getvalue()
+
+def exportar_cxc_global(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='CXC_Pendientes')
     return output.getvalue()
 
 # --- FILTRO LIMPIADOR ---
@@ -338,13 +344,16 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 9)
     
-    pdf.cell(15, 8, "Folio", border=1, align='C', fill=True)
-    pdf.cell(25, 8, "Fecha", border=1, align='C', fill=True)
-    pdf.cell(35, 8, "Folio Fiscal", border=1, align='C', fill=True)
-    pdf.cell(30, 8, "Operativo", border=1, align='C', fill=True)
-    pdf.cell(30, 8, "Financiero", border=1, align='C', fill=True)
-    pdf.cell(20, 8, "Atraso", border=1, align='C', fill=True)
-    pdf.cell(25, 8, "Total", border=1, align='C', fill=True)
+    # NUEVO: Ajuste de anchos para evitar desbordamiento (Suma: 190)
+    w_fol, w_fec, w_ff, w_op, w_fin, w_atr, w_tot = 12, 22, 25, 45, 40, 20, 26
+    
+    pdf.cell(w_fol, 8, "Folio", border=1, align='C', fill=True)
+    pdf.cell(w_fec, 8, "Fecha", border=1, align='C', fill=True)
+    pdf.cell(w_ff, 8, "Folio Fiscal", border=1, align='C', fill=True)
+    pdf.cell(w_op, 8, "Operativo", border=1, align='C', fill=True)
+    pdf.cell(w_fin, 8, "Financiero", border=1, align='C', fill=True)
+    pdf.cell(w_atr, 8, "Atraso", border=1, align='C', fill=True)
+    pdf.cell(w_tot, 8, "Total", border=1, align='C', fill=True)
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0)
@@ -360,19 +369,19 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
             dias_str = f"{dias} dias"
             suma_total_deuda += float(fac.get("total", 0))
             
-        pdf.cell(15, 7, str(fac.get("id")), border=1, align='C')
-        pdf.cell(25, 7, f_creacion.strftime('%d/%m/%Y'), border=1, align='C')
-        pdf.cell(35, 7, limpiar_texto(fac.get("folio_fiscal") or "S/F"), border=1, align='C')
-        pdf.cell(30, 7, limpiar_texto(fac.get("estatus_operativo", "Pendiente")), border=1, align='C')
-        pdf.cell(30, 7, limpiar_texto(fac.get("estatus_financiero", "Pendiente")), border=1, align='C')
-        pdf.cell(20, 7, dias_str, border=1, align='C')
-        pdf.cell(25, 7, f"${float(fac.get('total', 0)):,.2f}", border=1, align='R')
+        pdf.cell(w_fol, 7, str(fac.get("id")), border=1, align='C')
+        pdf.cell(w_fec, 7, f_creacion.strftime('%d/%m/%Y'), border=1, align='C')
+        pdf.cell(w_ff, 7, limpiar_texto(fac.get("folio_fiscal") or "S/F"), border=1, align='C')
+        pdf.cell(w_op, 7, limpiar_texto(fac.get("estatus_operativo", "Pendiente")), border=1, align='C')
+        pdf.cell(w_fin, 7, limpiar_texto(fac.get("estatus_financiero", "Pendiente")), border=1, align='C')
+        pdf.cell(w_atr, 7, dias_str, border=1, align='C')
+        pdf.cell(w_tot, 7, f"${float(fac.get('total', 0)):,.2f}", border=1, align='R')
         pdf.ln()
         
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(135, 8, "SALDO PENDIENTE TOTAL:", border=0, align='R')
-    pdf.cell(25, 8, f"${suma_total_deuda:,.2f}", border=1, align='R', fill=True)
+    pdf.cell(164, 8, "SALDO PENDIENTE TOTAL:", border=0, align='R')
+    pdf.cell(w_tot, 8, f"${suma_total_deuda:,.2f}", border=1, align='R', fill=True)
 
     pdf_bytes = pdf.output(dest='S')
     return bytes(pdf_bytes) if not isinstance(pdf_bytes, str) else pdf_bytes.encode('latin-1')
@@ -458,7 +467,6 @@ else:
                 idx_fp = opciones_fp.index(st.session_state.fp_cot_en_edicion) if st.session_state.fp_cot_en_edicion in opciones_fp else 0
                 fp_cotizacion_seleccionada = st.selectbox("Forma de pago esperada:", opciones_fp, index=idx_fp)
                 
-                # --- NUEVO: SELECTOR DE TIPO DE DOCUMENTO ---
                 opciones_doc = ["Cotización", "Nota de Venta"]
                 idx_doc = opciones_doc.index(st.session_state.tipo_doc_en_edicion) if st.session_state.tipo_doc_en_edicion in opciones_doc else 0
                 tipo_doc_seleccionado = st.selectbox("Tipo de documento:", opciones_doc, index=idx_doc)
@@ -631,7 +639,6 @@ else:
                 else: dias_atraso_lista.append(f"{dias} días")
             df_hist["Atraso"] = dias_atraso_lista
 
-            # Agregamos la columna de tipo de documento a la vista de la tabla
             df_vista = df_hist[["id", "tipo_documento", "cliente", "vendedor", "estatus_operativo", "estatus_financiero", "Atraso", "total", "fecha"]].copy()
             df_vista["total"] = df_vista["total"].apply(lambda x: f"${float(x):,.2f}")
             df_vista["fecha"] = pd.to_datetime(df_vista["fecha"]).dt.strftime('%d/%m/%Y %H:%M')
@@ -738,13 +745,26 @@ else:
                 lista_nombres_clientes = list(set([r["cliente"] for r in historial]))
                 if lista_nombres_clientes:
                     cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
-                    facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada"]
+                    
+                    # --- NUEVO: FILTRO PARA IGNORAR "PAGADAS" y "NO AUTORIZADAS" ---
+                    facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada" and r.get("estatus_financiero") != "Pagada"]
+                    
                     if len(facturas_cliente) > 0:
                         cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
                         pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
                         st.download_button("📥 Descargar Estado de Cuenta (PDF)", data=pdf_edo_cta, file_name=f"EstadoDeCuenta_{cli_edo_cta}.pdf", mime="application/pdf", use_container_width=True)
                     else:
-                        st.info("Este cliente no tiene facturas pendientes o activas.")
+                        st.info("Este cliente no tiene facturas pendientes de cobro.")
+            
+            # --- NUEVO: REPORTE CXC GLOBAL ---
+            st.markdown("---")
+            st.subheader("📊 Descarga Global de Cuentas por Cobrar (CXC)")
+            
+            # Filtramos para que solo salgan las pendientes reales de toda la base
+            df_pendientes = df_vista[(df_vista["Financiero"] != "Pagada") & (df_vista["Operativo"] != "No Autorizada") & (df_vista["Operativo"] != "Cancelada")]
+            
+            if st.download_button("📥 Descargar CXC Global (Excel)", data=exportar_cxc_global(df_pendientes), file_name=f"Reporte_CXC_Global_{date.today()}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True):
+                pass
 
     # ==========================================
     # 3. MÉTRICAS
