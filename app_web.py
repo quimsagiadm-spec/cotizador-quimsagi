@@ -344,7 +344,6 @@ def generar_estado_cuenta_pdf(nombre_cliente, cliente_info, lista_facturas_clien
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 9)
     
-    # NUEVO: Ajuste de anchos para evitar desbordamiento (Suma: 190)
     w_fol, w_fec, w_ff, w_op, w_fin, w_atr, w_tot = 12, 22, 25, 45, 40, 20, 26
     
     pdf.cell(w_fol, 8, "Folio", border=1, align='C', fill=True)
@@ -745,10 +744,7 @@ else:
                 lista_nombres_clientes = list(set([r["cliente"] for r in historial]))
                 if lista_nombres_clientes:
                     cli_edo_cta = st.selectbox("Selecciona cliente para estado de cuenta:", lista_nombres_clientes)
-                    
-                    # --- NUEVO: FILTRO PARA IGNORAR "PAGADAS" y "NO AUTORIZADAS" ---
                     facturas_cliente = [r for r in historial if r["cliente"] == cli_edo_cta and r.get("estatus_operativo") != "No Autorizada" and r.get("estatus_financiero") != "Pagada"]
-                    
                     if len(facturas_cliente) > 0:
                         cli_info_completo = next((c for c in obtener_clientes() if c.get("RAZON_SOCIAL") == cli_edo_cta), {"RAZON_SOCIAL": cli_edo_cta})
                         pdf_edo_cta = generar_estado_cuenta_pdf(cli_edo_cta, cli_info_completo, facturas_cliente)
@@ -756,12 +752,22 @@ else:
                     else:
                         st.info("Este cliente no tiene facturas pendientes de cobro.")
             
-            # --- NUEVO: REPORTE CXC GLOBAL ---
             st.markdown("---")
             st.subheader("📊 Descarga Global de Cuentas por Cobrar (CXC)")
             
-            # Filtramos para que solo salgan las pendientes reales de toda la base
-            df_pendientes = df_vista[(df_vista["Financiero"] != "Pagada") & (df_vista["Operativo"] != "No Autorizada") & (df_vista["Operativo"] != "Cancelada")]
+            df_pendientes = df_vista[(df_vista["estatus_financiero"] != "Pagada") & (df_vista["estatus_operativo"] != "No Autorizada") & (df_vista["estatus_operativo"] != "Cancelada")].copy()
+            
+            df_pendientes = df_pendientes.rename(columns={
+                "id": "Folio",
+                "tipo_documento": "Tipo",
+                "cliente": "Cliente",
+                "vendedor": "Atendió",
+                "estatus_operativo": "Operativo",
+                "estatus_financiero": "Financiero",
+                "Atraso": "Antigüedad",
+                "total": "Total",
+                "fecha": "Fecha"
+            })
             
             if st.download_button("📥 Descargar CXC Global (Excel)", data=exportar_cxc_global(df_pendientes), file_name=f"Reporte_CXC_Global_{date.today()}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True):
                 pass
