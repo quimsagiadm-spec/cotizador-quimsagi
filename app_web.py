@@ -806,10 +806,10 @@ else:
                 st.bar_chart(df_validas.groupby("estatus_financiero")["total"].sum())
                 
             st.markdown("---")
-            st.subheader("Top Clientes con mayor deuda (Pendiente de cobro)")
+            st.subheader("Todos los clientes con deuda (Pendiente de cobro)")
             df_deuda = df_validas[df_validas['estatus_financiero'] == 'Pendiente de cobro']
             if len(df_deuda) > 0:
-                top_deuda = df_deuda.groupby("cliente")["total"].sum().sort_values(ascending=False).head(5).reset_index()
+                top_deuda = df_deuda.groupby("cliente")["total"].sum().sort_values(ascending=False).reset_index()
                 top_deuda["total"] = top_deuda["total"].apply(lambda x: f"${x:,.2f}")
                 st.dataframe(top_deuda, column_config={"cliente": "Cliente", "total": "Deuda Pendiente"}, use_container_width=True, hide_index=True)
             else: st.success("¡Excelente! No hay saldos pendientes de cobro en este momento.")
